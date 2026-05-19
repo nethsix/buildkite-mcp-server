@@ -32,7 +32,7 @@ type CreateAnnotationArgs struct {
 	PipelineSlug string `json:"pipeline_slug"`
 	BuildNumber  string `json:"build_number"`
 	Body         string `json:"body" jsonschema:"The annotation body as HTML or Markdown"`
-	Style        string `json:"style,omitempty" jsonschema:"Optional annotation style: success\, info\, warning\, or error"`
+	Style        string `json:"style,omitempty" jsonschema:"Optional annotation style: success, info, warning, or error"`
 	Priority     int    `json:"priority,omitempty" jsonschema:"Optional annotation priority from 1 to 10"`
 	Context      string `json:"context,omitempty" jsonschema:"Optional annotation context used to identify or append to an annotation"`
 	Append       bool   `json:"append,omitempty" jsonschema:"Append the body to an existing annotation with the same context"`
@@ -60,7 +60,7 @@ type CreateJobAnnotationArgs struct {
 	BuildNumber  string `json:"build_number"`
 	JobID        string `json:"job_id"`
 	Body         string `json:"body" jsonschema:"The annotation body as HTML or Markdown"`
-	Style        string `json:"style,omitempty" jsonschema:"Optional annotation style: success\, info\, warning\, or error"`
+	Style        string `json:"style,omitempty" jsonschema:"Optional annotation style: success, info, warning, or error"`
 	Priority     int    `json:"priority,omitempty" jsonschema:"Optional annotation priority from 1 to 10"`
 	Context      string `json:"context,omitempty" jsonschema:"Optional annotation context used to identify or append to an annotation"`
 	Append       bool   `json:"append,omitempty" jsonschema:"Append the body to an existing annotation with the same context"`
