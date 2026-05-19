@@ -367,10 +367,6 @@ func CreateBuiltinToolsets() map[string]Toolset {
 			Tools: []ToolDefinition{
 				newToolDef(buildkite.ListAnnotations),
 				newToolDef(buildkite.CreateAnnotation),
-				newToolDef(buildkite.DeleteAnnotation),
-				newToolDef(buildkite.ListJobAnnotations),
-				newToolDef(buildkite.CreateJobAnnotation),
-				newToolDef(buildkite.DeleteJobAnnotation),
 			},
 		},
 		ToolsetUser: {
