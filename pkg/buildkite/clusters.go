@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/buildkite/buildkite-mcp-server/pkg/trace"
-	"github.com/buildkite/go-buildkite/v4"
+	"github.com/buildkite/go-buildkite/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -36,13 +36,13 @@ type CreateClusterArgs struct {
 }
 
 type UpdateClusterArgs struct {
-	OrgSlug        string `json:"org_slug"`
-	ClusterID      string `json:"cluster_id"`
-	Name           string `json:"name,omitempty" jsonschema:"New name for the cluster"`
-	Description    string `json:"description,omitempty" jsonschema:"New description for the cluster"`
-	Emoji          string `json:"emoji,omitempty" jsonschema:"New emoji for the cluster"`
-	Color          string `json:"color,omitempty" jsonschema:"New hex color code for the cluster"`
-	DefaultQueueID string `json:"default_queue_id,omitempty" jsonschema:"ID of the default queue for the cluster"`
+	OrgSlug        string  `json:"org_slug"`
+	ClusterID      string  `json:"cluster_id"`
+	Name           *string `json:"name,omitempty" jsonschema:"New name for the cluster"`
+	Description    *string `json:"description,omitempty" jsonschema:"New description for the cluster"`
+	Emoji          *string `json:"emoji,omitempty" jsonschema:"New emoji for the cluster"`
+	Color          *string `json:"color,omitempty" jsonschema:"New hex color code for the cluster"`
+	DefaultQueueID *string `json:"default_queue_id,omitempty" jsonschema:"ID of the default queue for the cluster"`
 }
 
 func ListClusters() (mcp.Tool, mcp.ToolHandlerFor[ListClustersArgs, any], []string) {
@@ -165,13 +165,24 @@ func UpdateCluster() (mcp.Tool, mcp.ToolHandlerFor[UpdateClusterArgs, any], []st
 			)
 
 			deps := DepsFromContext(ctx)
-			cluster, _, err := deps.ClustersClient.Update(ctx, args.OrgSlug, args.ClusterID, buildkite.ClusterUpdate{
-				Name:           args.Name,
-				Description:    args.Description,
-				Emoji:          args.Emoji,
-				Color:          args.Color,
-				DefaultQueueID: args.DefaultQueueID,
-			})
+			update := buildkite.ClusterUpdate{}
+			if args.Name != nil {
+				update.Name = buildkite.Some(*args.Name)
+			}
+			if args.Description != nil {
+				update.Description = buildkite.Some(*args.Description)
+			}
+			if args.Emoji != nil {
+				update.Emoji = buildkite.Some(*args.Emoji)
+			}
+			if args.Color != nil {
+				update.Color = buildkite.Some(*args.Color)
+			}
+			if args.DefaultQueueID != nil {
+				update.DefaultQueueID = buildkite.Some(*args.DefaultQueueID)
+			}
+
+			cluster, _, err := deps.ClustersClient.Update(ctx, args.OrgSlug, args.ClusterID, update)
 			if err != nil {
 				return handleBuildkiteError(err)
 			}

@@ -10,7 +10,7 @@ import (
 	buildkitelogs "github.com/buildkite/buildkite-logs"
 	"github.com/buildkite/buildkite-mcp-server/internal/commands"
 	"github.com/buildkite/buildkite-mcp-server/pkg/trace"
-	gobuildkite "github.com/buildkite/go-buildkite/v4"
+	gobuildkite "github.com/buildkite/go-buildkite/v5"
 	"github.com/mattn/go-isatty"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"

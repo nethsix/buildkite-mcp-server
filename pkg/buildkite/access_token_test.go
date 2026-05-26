@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buildkite/go-buildkite/v4"
+	"github.com/buildkite/go-buildkite/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,5 +64,5 @@ func TestAccessToken(t *testing.T) {
 
 	textContent := getTextResult(t, result)
 
-	assert.JSONEq(`{"uuid":"123","scopes":["read_build","read_pipeline"],"description":"Test token","created_at":"2023-01-01T00:00:00Z","user":{"name":"Test User","email":"test@example.com"}}`, textContent.Text)
+	assert.JSONEq(`{"uuid":"123","scopes":["read_build","read_pipeline"],"description":"Test token","created_at":"2023-01-01T00:00:00Z","expires_at":null,"user":{"name":"Test User","email":"test@example.com"}}`, textContent.Text)
 }

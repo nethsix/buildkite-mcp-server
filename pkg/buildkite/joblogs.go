@@ -174,7 +174,7 @@ func SearchLogs() (mcp.Tool, mcp.ToolHandlerFor[SearchLogsParams, any], []string
 
 			var results []SearchResult
 			count := 0
-			for result, err := range reader.SearchEntriesIter(opts) {
+			for result, err := range reader.SearchEntriesIter(ctx, opts) {
 				if err != nil {
 					return utils.NewToolResultError(fmt.Sprintf("Search error: %v", err)), nil, nil
 				}
@@ -248,7 +248,7 @@ func TailLogs() (mcp.Tool, mcp.ToolHandlerFor[TailLogsParams, any], []string) {
 			startRow := max(fileInfo.RowCount-int64(params.Tail), 0)
 
 			var entries []buildkitelogs.ParquetLogEntry
-			for entry, err := range reader.SeekToRow(startRow) {
+			for entry, err := range reader.SeekToRow(ctx, startRow) {
 				if err != nil {
 					return utils.NewToolResultError(fmt.Sprintf("Failed to read tail entries: %v", err)), nil, nil
 				}
@@ -310,9 +310,9 @@ func ReadLogs() (mcp.Tool, mcp.ToolHandlerFor[ReadLogsParams, any], []string) {
 
 			var entryIter iter.Seq2[buildkitelogs.ParquetLogEntry, error]
 			if params.Seek > 0 {
-				entryIter = reader.SeekToRow(int64(params.Seek))
+				entryIter = reader.SeekToRow(ctx, int64(params.Seek))
 			} else {
-				entryIter = reader.ReadEntriesIter()
+				entryIter = reader.ReadEntriesIter(ctx)
 			}
 
 			for entry, err := range entryIter {
