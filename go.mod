@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/alecthomas/kong v1.15.0
-	github.com/buildkite/buildkite-logs v0.8.1
+	github.com/buildkite/buildkite-logs v0.9.1
 	github.com/buildkite/go-buildkite/v5 v5.0.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/mattn/go-isatty v0.0.22
@@ -44,7 +44,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/aws/smithy-go v1.25.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
-	github.com/buildkite/go-buildkite/v4 v4.21.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -95,5 +94,3 @@ require (
 )
 
 tool github.com/nikolaydubina/go-cover-treemap
-
-replace github.com/buildkite/go-buildkite/v5 => ../go-buildkite

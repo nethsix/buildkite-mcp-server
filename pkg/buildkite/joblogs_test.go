@@ -20,7 +20,7 @@ func (m *MockBuildkiteLogsClient) NewReader(ctx context.Context, org, pipeline, 
 	if m.NewReaderFunc != nil {
 		return m.NewReaderFunc(ctx, org, pipeline, build, job, ttl, forceRefresh)
 	}
-	return buildkitelogs.NewParquetReader(ctx, "/tmp/test.parquet"), nil
+	return buildkitelogs.NewParquetReader("/tmp/test.parquet"), nil
 }
 
 var _ BuildkiteLogsClient = (*MockBuildkiteLogsClient)(nil)
@@ -110,7 +110,7 @@ func TestSearchLogsHandler(t *testing.T) {
 			assert.Equal("test-pipeline", pipeline)
 			assert.Equal("123", build)
 			assert.Equal("job-456", job)
-			return buildkitelogs.NewParquetReader(ctx, "/tmp/test.parquet"), nil
+			return buildkitelogs.NewParquetReader("/tmp/test.parquet"), nil
 		},
 	}
 
@@ -167,7 +167,7 @@ func TestTailLogsHandler(t *testing.T) {
 
 	mockClient := &MockBuildkiteLogsClient{
 		NewReaderFunc: func(ctx context.Context, org, pipeline, build, job string, ttl time.Duration, forceRefresh bool) (*buildkitelogs.ParquetReader, error) {
-			return buildkitelogs.NewParquetReader(ctx, "/tmp/test.parquet"), nil
+			return buildkitelogs.NewParquetReader("/tmp/test.parquet"), nil
 		},
 	}
 
@@ -199,7 +199,7 @@ func TestReadLogsHandler(t *testing.T) {
 
 	mockClient := &MockBuildkiteLogsClient{
 		NewReaderFunc: func(ctx context.Context, org, pipeline, build, job string, ttl time.Duration, forceRefresh bool) (*buildkitelogs.ParquetReader, error) {
-			return buildkitelogs.NewParquetReader(ctx, "/tmp/test.parquet"), nil
+			return buildkitelogs.NewParquetReader("/tmp/test.parquet"), nil
 		},
 	}
 
@@ -238,7 +238,7 @@ func TestNewParquetReader(t *testing.T) {
 				assert.Equal("job-456", job)
 				assert.Equal(5*time.Minute, ttl)
 				assert.True(forceRefresh)
-				return buildkitelogs.NewParquetReader(ctx, "/tmp/test.parquet"), nil
+				return buildkitelogs.NewParquetReader("/tmp/test.parquet"), nil
 			},
 		}
 

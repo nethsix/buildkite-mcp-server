@@ -88,7 +88,7 @@ func run(ctx context.Context, cmd *kong.Context) error {
 		clientOpts = append(clientOpts, buildkitelogs.WithMaxLogBytes(*cli.MaxLogBytes))
 	}
 
-	buildkiteLogsClient, err := buildkitelogs.NewClientWithAPI(ctx, commands.NewBuildkiteLogsAPI(client), cli.CacheURL, clientOpts...)
+	buildkiteLogsClient, err := buildkitelogs.NewClient(ctx, client, cli.CacheURL, clientOpts...)
 	if err != nil {
 		return fmt.Errorf("failed to create buildkite logs client: %w", err)
 	}
