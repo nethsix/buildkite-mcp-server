@@ -479,3 +479,42 @@ func TestUpdatePipelineOmittedFieldsAndEmptyTags(t *testing.T) {
 	})
 	assert.NoError(err)
 }
+
+func TestUpdatePipelineSendsEmptyTags(t *testing.T) {
+	assert := require.New(t)
+
+	client := &MockPipelinesClient{
+		UpdateFunc: func(ctx context.Context, org string, pipeline string, p buildkite.UpdatePipeline) (buildkite.Pipeline, *buildkite.Response, error) {
+			assert.Equal("org", org)
+			assert.Equal("test-pipeline", pipeline)
+
+			tags, ok := p.Tags.Value()
+			assert.True(ok)
+			assert.Equal([]string{}, tags)
+
+			return buildkite.Pipeline{
+					ID:   "123",
+					Slug: "test-pipeline",
+					Tags: []string{},
+				}, &buildkite.Response{
+					Response: &http.Response{
+						StatusCode: 200,
+					},
+				}, nil
+		},
+	}
+
+	ctx := ContextWithDeps(context.Background(), ToolDependencies{PipelinesClient: client})
+
+	_, handler, _ := UpdatePipeline()
+
+	result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), UpdatePipelineArgs{
+		OrgSlug:      "org",
+		PipelineSlug: "test-pipeline",
+		Tags:         []string{},
+	})
+	assert.NoError(err)
+
+	textContent := getTextResult(t, result)
+	assert.JSONEq(`{"id":"123","slug":"test-pipeline","skip_queued_branch_builds":false,"cancel_running_branch_builds":false,"provider":{"id":"","webhook_url":"","settings":null}}`, textContent.Text)
+}
