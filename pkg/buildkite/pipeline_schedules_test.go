@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/buildkite/go-buildkite/v4"
+	"github.com/buildkite/go-buildkite/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -172,14 +172,18 @@ func TestUpdatePipelineSchedule(t *testing.T) {
 	assert := require.New(t)
 
 	enabled := true
+	label := "Updated label"
 	client := &MockPipelineSchedulesClient{
 		UpdateFunc: func(ctx context.Context, org, pipelineSlug, id string, in buildkite.UpdatePipelineSchedule) (buildkite.PipelineSchedule, *buildkite.Response, error) {
 			assert.Equal("org", org)
 			assert.Equal("pipeline", pipelineSlug)
 			assert.Equal("abc", id)
-			assert.Equal("Updated label", in.Label)
-			assert.NotNil(in.Enabled)
-			assert.True(*in.Enabled)
+			gotLabel, ok := in.Label.Value()
+			assert.True(ok)
+			assert.Equal("Updated label", gotLabel)
+			gotEnabled, ok := in.Enabled.Value()
+			assert.True(ok)
+			assert.True(gotEnabled)
 			return buildkite.PipelineSchedule{
 					ID:      "abc",
 					Label:   "Updated label",
@@ -201,7 +205,7 @@ func TestUpdatePipelineSchedule(t *testing.T) {
 		OrgSlug:      "org",
 		PipelineSlug: "pipeline",
 		ScheduleID:   "abc",
-		Label:        "Updated label",
+		Label:        &label,
 		Enabled:      &enabled,
 	})
 	assert.NoError(err)

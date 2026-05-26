@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/buildkite/buildkite-mcp-server/pkg/trace"
-	"github.com/buildkite/go-buildkite/v4"
+	"github.com/buildkite/go-buildkite/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -154,11 +154,11 @@ type UpdatePipelineScheduleArgs struct {
 	OrgSlug      string            `json:"org_slug"`
 	PipelineSlug string            `json:"pipeline_slug"`
 	ScheduleID   string            `json:"schedule_id"`
-	Cronline     string            `json:"cronline,omitempty" jsonschema:"Schedule interval as a crontab expression or predefined value"`
-	Label        string            `json:"label,omitempty"`
-	Message      string            `json:"message,omitempty"`
-	Commit       string            `json:"commit,omitempty"`
-	Branch       string            `json:"branch,omitempty"`
+	Cronline     *string           `json:"cronline,omitempty" jsonschema:"Schedule interval as a crontab expression or predefined value"`
+	Label        *string           `json:"label,omitempty"`
+	Message      *string           `json:"message,omitempty"`
+	Commit       *string           `json:"commit,omitempty"`
+	Branch       *string           `json:"branch,omitempty"`
 	Env          map[string]string `json:"env,omitempty"`
 	Enabled      *bool             `json:"enabled,omitempty" jsonschema:"Whether the schedule is active. Re-enabling clears previous failure data."`
 }
@@ -180,14 +180,27 @@ func UpdatePipelineSchedule() (mcp.Tool, mcp.ToolHandlerFor[UpdatePipelineSchedu
 				attribute.String("schedule_id", args.ScheduleID),
 			)
 
-			update := buildkite.UpdatePipelineSchedule{
-				Cronline: args.Cronline,
-				Label:    args.Label,
-				Message:  args.Message,
-				Commit:   args.Commit,
-				Branch:   args.Branch,
-				Env:      args.Env,
-				Enabled:  args.Enabled,
+			update := buildkite.UpdatePipelineSchedule{}
+			if args.Cronline != nil {
+				update.Cronline = buildkite.Some(*args.Cronline)
+			}
+			if args.Label != nil {
+				update.Label = buildkite.Some(*args.Label)
+			}
+			if args.Message != nil {
+				update.Message = buildkite.Some(*args.Message)
+			}
+			if args.Commit != nil {
+				update.Commit = buildkite.Some(*args.Commit)
+			}
+			if args.Branch != nil {
+				update.Branch = buildkite.Some(*args.Branch)
+			}
+			if args.Env != nil {
+				update.Env = buildkite.Some(args.Env)
+			}
+			if args.Enabled != nil {
+				update.Enabled = buildkite.Some(*args.Enabled)
 			}
 
 			deps := DepsFromContext(ctx)
