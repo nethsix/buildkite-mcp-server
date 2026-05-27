@@ -159,7 +159,7 @@ type UpdatePipelineScheduleArgs struct {
 	Message      *string           `json:"message,omitempty"`
 	Commit       *string           `json:"commit,omitempty"`
 	Branch       *string           `json:"branch,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
+	Env          map[string]string `json:"env,omitempty" jsonschema:"Environment variables to set on triggered builds. Providing this field REPLACES the existing env map entirely — include all keys you want to retain."`
 	Enabled      *bool             `json:"enabled,omitempty" jsonschema:"Whether the schedule is active. Re-enabling clears previous failure data."`
 }
 
