@@ -1,6 +1,8 @@
 [settings]
 experimental = true
 lockfile = true
+github.github_attestations = false
+github.slsa = false
 
 [tools]
 go = "1.26.2"

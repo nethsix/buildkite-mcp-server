@@ -48,6 +48,8 @@ steps:
       - "windows"
     artifact_paths:
       - dist/**/*
+    secrets:
+      - MISE_GITHUB_TOKEN
     plugins:
       - mise#v1.1.1: ~
 
