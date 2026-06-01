@@ -11,7 +11,7 @@ This guide explains how to effectively use the Buildkite MCP server's log tools 
 
 ## Tools Overview
 
-The server provides three tools for log analysis:
+The server provides these tools for log analysis:
 
 ### 1. tail_logs - Start Here for Failures
 **Best first step for diagnosing failures** — shows the last N log lines where errors typically appear.
@@ -27,6 +27,7 @@ The server provides three tools for log analysis:
 ```
 
 Defaults to 10 lines if `tail` is omitted or zero.
+Use `tail: 50-100` for an initial failure check when you want more than the default.
 
 ### 2. search_logs - For Specific Issues
 **Most powerful tool** for finding specific error patterns with context.
@@ -36,10 +37,12 @@ Defaults to 10 lines if `tail` is omitted or zero.
 - `context`: Lines before/after each match (0-20 recommended)
 - `before_context` / `after_context`: Asymmetric context
 - `case_sensitive`: Enable case-sensitive matching
-- `invert_match`: Show non-matching lines
+- `invert_match`: Return entries that do not match the regex
 - `reverse`: Search backwards from end
 - `seek_start`: Start search from this row number (0-based)
 - `limit`: Max matches to return (set this to avoid excessive output)
+
+Recommended starting values: use `context: 3`, `limit: 10-20`, and leave boolean options false unless you need them. If `limit` is omitted, search can return every match.
 
 ```json
 {
@@ -120,7 +123,7 @@ Log entries are returned as JSON objects:
 ### Token Efficiency
 - **Always set `limit`** on `search_logs` and `read_logs` to avoid excessive output
 - Start with low limits (`limit: 10-20`) and refine based on findings
-- Use `invert_match: true` to exclude noisy lines
+- Use `invert_match: true` only with a narrow pattern and a `limit`; it returns entries that do not match the regex
 - Use `reverse: true` with `seek_start` to search backwards from a known failure point
 
 ### Context Guidelines
@@ -158,13 +161,16 @@ Log entries are returned as JSON objects:
 ## Example Investigation
 
 ```
-// 1. Check recent output for obvious failures
-tail_logs: org_slug=<ORG> pipeline_slug=<PIPELINE> build_number=<BUILD> job_id=<JOB_ID> tail=50
+// 1. Identify failed or broken jobs first
+get_build: org_slug=<ORG> pipeline_slug=<PIPELINE> build_number=<BUILD> job_state="failed,broken"
 
-// 2. Search for errors with context
+// 2. Use the id from a failed job as job_id, then check recent output
+tail_logs: org_slug=<ORG> pipeline_slug=<PIPELINE> build_number=<BUILD> job_id=<FAILED_JOB_ID> tail=50
+
+// 3. Search for errors with context
 search_logs: ...pattern="failed|error" context=5 limit=15
 
-// 3. Deep dive on a specific failure using rn from step 2
+// 4. Deep dive on a specific failure using rn from step 3
 read_logs: ...seek=<rn-10> limit=20
 ```
 
