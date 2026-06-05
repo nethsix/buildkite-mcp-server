@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/url"
-	"strings"
 
 	"github.com/buildkite/buildkite-mcp-server/pkg/tokens"
 	"github.com/buildkite/buildkite-mcp-server/pkg/trace"
@@ -20,7 +19,7 @@ import (
 type ArtifactsClient interface {
 	ListByBuild(ctx context.Context, org, pipelineSlug, buildNumber string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
 	ListByJob(ctx context.Context, org, pipelineSlug, buildNumber string, jobID string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
-	DownloadArtifactByURL(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error)
+	DownloadArtifact(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error)
 }
 
 // BuildkiteClientAdapter adapts the buildkite.Client to work with our interfaces
@@ -38,44 +37,26 @@ func (a *BuildkiteClientAdapter) ListByJob(ctx context.Context, org, pipelineSlu
 	return a.Artifacts.ListByJob(ctx, org, pipelineSlug, buildNumber, jobID, opts)
 }
 
-// DownloadArtifactByURL implements ArtifactsClient with URL rewriting support
-func (a *BuildkiteClientAdapter) DownloadArtifactByURL(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error) {
-	// Rewrite URL if it's using the default Buildkite API URL and we have a custom base URL
-	rewrittenURL := a.rewriteArtifactURL(url)
-	return a.Artifacts.DownloadArtifactByURL(ctx, rewrittenURL, writer)
+// DownloadArtifact implements ArtifactsClient. The artifact endpoint is built
+// from the supplied identifiers and resolved relative to the client's configured
+// BaseURL, so proxied installations (with a base-path prefix) are handled by the
+// client and the caller never supplies a raw URL.
+func (a *BuildkiteClientAdapter) DownloadArtifact(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
+	return a.Artifacts.DownloadArtifactByURL(ctx, artifactDownloadPath(org, pipelineSlug, buildNumber, jobID, artifactID), writer)
 }
 
-// rewriteArtifactURL rewrites artifact URLs to use the configured base URL
-func (a *BuildkiteClientAdapter) rewriteArtifactURL(inputURL string) string {
-	// Parse the input URL
-	parsedURL, err := url.Parse(inputURL)
-	if err != nil {
-		// If we can't parse the URL, return it as-is
-		return inputURL
-	}
-
-	// Get the configured base URL from the client
-	baseURL := a.BaseURL
-	if baseURL == nil || baseURL.String() == "" {
-		return inputURL
-	}
-
-	// Only rewrite if the base URL is different from the input URL's host and scheme
-	// and the base URL is non-empty
-	if baseURL.Host != parsedURL.Host || baseURL.Scheme != parsedURL.Scheme {
-		// Replace the host and scheme with the configured base URL
-		parsedURL.Scheme = baseURL.Scheme
-		parsedURL.Host = baseURL.Host
-
-		// If the base URL has a path prefix, prepend it to the existing path
-		if baseURL.Path != "" && baseURL.Path != "/" {
-			// Remove trailing slash from base path if present
-			basePath := strings.TrimSuffix(baseURL.Path, "/")
-			parsedURL.Path = basePath + parsedURL.Path
-		}
-	}
-
-	return parsedURL.String()
+// artifactDownloadPath builds the relative Buildkite REST path for an artifact
+// download. Each identifier is path-escaped so a value cannot inject extra path
+// segments, and the fixed endpoint structure is hard-coded, so the request can
+// only ever address an artifact download resource.
+func artifactDownloadPath(org, pipelineSlug, buildNumber, jobID, artifactID string) string {
+	return fmt.Sprintf("v2/organizations/%s/pipelines/%s/builds/%s/jobs/%s/artifacts/%s/download",
+		url.PathEscape(org),
+		url.PathEscape(pipelineSlug),
+		url.PathEscape(buildNumber),
+		url.PathEscape(jobID),
+		url.PathEscape(artifactID),
+	)
 }
 
 type ListArtifactsForBuildArgs struct {
@@ -96,7 +77,11 @@ type ListArtifactsForJobArgs struct {
 }
 
 type GetArtifactArgs struct {
-	URL string `json:"url"`
+	OrgSlug      string `json:"org_slug"`
+	PipelineSlug string `json:"pipeline_slug"`
+	BuildNumber  string `json:"build_number"`
+	JobID        string `json:"job_id" jsonschema:"The UUID of the job that produced the artifact"`
+	ArtifactID   string `json:"artifact_id" jsonschema:"The UUID of the artifact to download"`
 }
 
 func ListArtifactsForBuild() (mcp.Tool, mcp.ToolHandlerFor[ListArtifactsForBuildArgs, any], []string) {
@@ -196,7 +181,7 @@ func ListArtifactsForJob() (mcp.Tool, mcp.ToolHandlerFor[ListArtifactsForJobArgs
 func GetArtifact() (mcp.Tool, mcp.ToolHandlerFor[GetArtifactArgs, any], []string) {
 	return mcp.Tool{
 			Name:        "get_artifact",
-			Description: "Get detailed information about a specific artifact including its metadata, file size, SHA-1 hash, and download URL",
+			Description: "Download a specific artifact's content, identified by its organization, pipeline, build, job, and artifact identifiers. The content is returned base64-encoded",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Get Artifact",
 				ReadOnlyHint: true,
@@ -206,20 +191,18 @@ func GetArtifact() (mcp.Tool, mcp.ToolHandlerFor[GetArtifactArgs, any], []string
 			ctx, span := trace.Start(ctx, "buildkite.GetArtifact")
 			defer span.End()
 
-			artifactURL := args.URL
-
-			// Validate the URL format and scheme
-			parsedURL, err := url.Parse(artifactURL)
-			if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
-				return utils.NewToolResultError("invalid URL format: must be an http or https URL"), nil, nil
-			}
-
-			span.SetAttributes(attribute.String("url", artifactURL))
+			span.SetAttributes(
+				attribute.String("org_slug", args.OrgSlug),
+				attribute.String("pipeline_slug", args.PipelineSlug),
+				attribute.String("build_number", args.BuildNumber),
+				attribute.String("job_id", args.JobID),
+				attribute.String("artifact_id", args.ArtifactID),
+			)
 
 			// Use a buffer to capture the artifact data instead of writing directly to stdout
 			var buffer bytes.Buffer
 			deps := DepsFromContext(ctx)
-			resp, err := deps.ArtifactsClient.DownloadArtifactByURL(ctx, artifactURL, &buffer)
+			resp, err := deps.ArtifactsClient.DownloadArtifact(ctx, args.OrgSlug, args.PipelineSlug, args.BuildNumber, args.JobID, args.ArtifactID, &buffer)
 			if err != nil {
 				return utils.NewToolResultError(fmt.Sprintf("response failed with error %s", err.Error())), nil, nil
 			}

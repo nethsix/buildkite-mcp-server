@@ -196,7 +196,7 @@ func TestListArtifactsForJobArgsSchema(t *testing.T) {
 
 func TestGetArtifactArgsSchema(t *testing.T) {
 	req := sortedRequired[GetArtifactArgs](t)
-	require.Equal(t, []string{"url"}, req)
+	require.Equal(t, []string{"artifact_id", "build_number", "job_id", "org_slug", "pipeline_slug"}, req)
 }
 
 func TestGetTestArgsSchema(t *testing.T) {
