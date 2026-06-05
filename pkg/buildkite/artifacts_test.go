@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/buildkite/go-buildkite/v5"
@@ -12,9 +13,9 @@ import (
 )
 
 type MockArtifactsClient struct {
-	ListByBuildFunc           func(ctx context.Context, org, pipelineSlug, buildNumber string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
-	ListByJobFunc             func(ctx context.Context, org, pipelineSlug, buildNumber string, jobID string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
-	DownloadArtifactByURLFunc func(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error)
+	ListByBuildFunc      func(ctx context.Context, org, pipelineSlug, buildNumber string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
+	ListByJobFunc        func(ctx context.Context, org, pipelineSlug, buildNumber string, jobID string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
+	DownloadArtifactFunc func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error)
 }
 
 func (m *MockArtifactsClient) ListByBuild(ctx context.Context, org, pipelineSlug, buildNumber string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error) {
@@ -31,9 +32,9 @@ func (m *MockArtifactsClient) ListByJob(ctx context.Context, org, pipelineSlug, 
 	return nil, nil, nil
 }
 
-func (m *MockArtifactsClient) DownloadArtifactByURL(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error) {
-	if m.DownloadArtifactByURLFunc != nil {
-		return m.DownloadArtifactByURLFunc(ctx, url, writer)
+func (m *MockArtifactsClient) DownloadArtifact(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
+	if m.DownloadArtifactFunc != nil {
+		return m.DownloadArtifactFunc(ctx, org, pipelineSlug, buildNumber, jobID, artifactID, writer)
 	}
 	return nil, nil
 }
@@ -127,8 +128,11 @@ func TestListArtifactsForJob(t *testing.T) {
 func TestGetArtifact(t *testing.T) {
 	assert := require.New(t)
 
+	var gotArgs []string
 	client := &MockArtifactsClient{
-		DownloadArtifactByURLFunc: func(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error) {
+		DownloadArtifactFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
+			gotArgs = []string{org, pipelineSlug, buildNumber, jobID, artifactID}
+
 			// Simulate writing artifact content to the provided writer
 			_, err := writer.Write([]byte("This is test artifact content"))
 			if err != nil {
@@ -152,9 +156,14 @@ func TestGetArtifact(t *testing.T) {
 
 	request := createMCPRequest(t, map[string]any{})
 	result, _, err := handler(ctx, request, GetArtifactArgs{
-		URL: "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
+		OrgSlug:      "myorg",
+		PipelineSlug: "my-pipeline",
+		BuildNumber:  "123",
+		JobID:        "abc",
+		ArtifactID:   "def",
 	})
 	assert.NoError(err)
+	assert.Equal([]string{"myorg", "my-pipeline", "123", "abc", "def"}, gotArgs)
 
 	textContent := getTextResult(t, result)
 
@@ -171,7 +180,7 @@ func TestGetArtifact_ErrorResponse(t *testing.T) {
 	assert := require.New(t)
 
 	client := &MockArtifactsClient{
-		DownloadArtifactByURLFunc: func(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error) {
+		DownloadArtifactFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
 			resp := &http.Response{
 				Request:    &http.Request{Method: "GET"},
 				StatusCode: 404,
@@ -190,210 +199,91 @@ func TestGetArtifact_ErrorResponse(t *testing.T) {
 
 	req := createMCPRequest(t, map[string]any{})
 	result, _, err := handler(ctx, req, GetArtifactArgs{
-		URL: "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/missing/download",
+		OrgSlug:      "myorg",
+		PipelineSlug: "my-pipeline",
+		BuildNumber:  "123",
+		JobID:        "abc",
+		ArtifactID:   "missing",
 	})
 	assert.NoError(err)
 	assert.NotNil(result)
 	assert.Contains(getTextResult(t, result).Text, `{"message":"Artifact not found"}`)
 }
 
-func TestGetArtifact_RejectsNonArtifactURL(t *testing.T) {
+func TestArtifactDownloadPath(t *testing.T) {
 	assert := require.New(t)
 
-	var called bool
-	client := &MockArtifactsClient{
-		DownloadArtifactByURLFunc: func(ctx context.Context, url string, writer io.Writer) (*buildkite.Response, error) {
-			called = true
-			return &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
-		},
-	}
+	assert.Equal(
+		"v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
+		artifactDownloadPath("myorg", "my-pipeline", "123", "abc", "def"),
+	)
 
-	ctx := ContextWithDeps(context.Background(), ToolDependencies{ArtifactsClient: client})
-	_, handler, _ := GetArtifact()
-
-	// A URL that the caller's token could otherwise reach, but which is not an
-	// artifact resource, must be rejected before any request is issued.
-	req := createMCPRequest(t, map[string]any{})
-	result, _, err := handler(ctx, req, GetArtifactArgs{
-		URL: "https://api.buildkite.com/v2/access-token",
-	})
-	assert.NoError(err)
-	assert.NotNil(result)
-	assert.Contains(getTextResult(t, result).Text, "invalid artifact URL")
-	assert.False(called, "download must not be attempted for a non-artifact URL")
+	// Path-unsafe characters in an identifier are escaped so the value cannot
+	// inject extra path segments and alter which endpoint is addressed.
+	assert.Equal(
+		"v2/organizations/o/pipelines/p/builds/b/jobs/j/artifacts/a%2F..%2Faccess-token/download",
+		artifactDownloadPath("o", "p", "b", "j", "a/../access-token"),
+	)
 }
 
-func TestValidateArtifactURL(t *testing.T) {
+func TestBuildkiteClientAdapter_DownloadArtifact(t *testing.T) {
+	assert := require.New(t)
+
+	const wantSuffix = "/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download"
+
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write([]byte("artifact-bytes"))
+	}))
+	defer srv.Close()
+
 	tests := []struct {
-		name    string
-		url     string
-		wantErr bool
+		name     string
+		basePath string // appended to the test server URL to form the base URL
+		wantPath string
 	}{
 		{
-			name: "artifact download URL",
-			url:  "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
+			// The common production shape: host with a root path and trailing
+			// slash. No prefix is added and none is dropped.
+			name:     "default root base url",
+			basePath: "/",
+			wantPath: wantSuffix,
 		},
 		{
-			name: "artifact resource URL without /download",
-			url:  "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def",
+			// A proxied installation serving the REST API under a path prefix;
+			// the prefix must be preserved on the resolved request.
+			name:     "proxy base url with trailing slash",
+			basePath: "/rest/",
+			wantPath: "/rest" + wantSuffix,
 		},
 		{
-			name: "proxied install with base path prefix",
-			url:  "https://buildkite.proxy.com/rest/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-		},
-		{
-			name:    "access-token endpoint",
-			url:     "https://api.buildkite.com/v2/access-token",
-			wantErr: true,
-		},
-		{
-			name:    "user endpoint",
-			url:     "https://api.buildkite.com/v2/user",
-			wantErr: true,
-		},
-		{
-			name:    "artifact prefix but trailing different endpoint",
-			url:     "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download/../../access-token",
-			wantErr: true,
-		},
-		{
-			name:    "extra path segment after artifact id",
-			url:     "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/secrets",
-			wantErr: true,
-		},
-		{
-			name:    "non-http scheme",
-			url:     "file:///etc/passwd",
-			wantErr: true,
-		},
-		{
-			name:    "arbitrary host and path",
-			url:     "https://example.com/artifact",
-			wantErr: true,
+			// Same proxy prefix without a trailing slash — a realistic
+			// misconfiguration the client must normalise to the same request.
+			name:     "proxy base url without trailing slash",
+			basePath: "/rest",
+			wantPath: "/rest" + wantSuffix,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := validateArtifactURL(tt.url)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-		})
-	}
-}
+			gotPath = ""
 
-func TestBuildkiteClientAdapter_URLRewriting(t *testing.T) {
-	assert := require.New(t)
-
-	// Test rewriteArtifactURL method
-	tests := []struct {
-		name        string
-		baseURL     string
-		inputURL    string
-		expectedURL string
-	}{
-		{
-			name:        "should rewrite URLs when base URL has different host",
-			baseURL:     "https://buildkite.proxy.com/rest/",
-			inputURL:    "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-			expectedURL: "https://buildkite.proxy.com/rest/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-		},
-		{
-			name:        "should not rewrite URLs when base URL matches input URL host and scheme",
-			baseURL:     "https://api.buildkite.com/",
-			inputURL:    "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-			expectedURL: "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-		},
-		{
-			name:        "should rewrite URLs when base URL has different host (any domain)",
-			baseURL:     "https://buildkite.proxy.com/rest/",
-			inputURL:    "https://example.com/some/other/url",
-			expectedURL: "https://buildkite.proxy.com/rest/some/other/url",
-		},
-		{
-			name:        "should handle base URL without trailing slash",
-			baseURL:     "https://buildkite.proxy.com/rest",
-			inputURL:    "https://api.buildkite.com/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-			expectedURL: "https://buildkite.proxy.com/rest/v2/organizations/myorg/pipelines/my-pipeline/builds/123/jobs/abc/artifacts/def/download",
-		},
-		{
-			name:        "should handle scheme differences",
-			baseURL:     "http://buildkite.proxy.com/",
-			inputURL:    "https://api.buildkite.com/v2/test",
-			expectedURL: "http://buildkite.proxy.com/v2/test",
-		},
-		{
-			name:        "should not rewrite when hosts and schemes match exactly",
-			baseURL:     "https://api.buildkite.com/",
-			inputURL:    "https://api.buildkite.com/v2/test",
-			expectedURL: "https://api.buildkite.com/v2/test",
-		},
-		{
-			name:        "should handle base URL with complex path prefix",
-			baseURL:     "https://proxy.example.com/buildkite/api/",
-			inputURL:    "https://api.buildkite.com/v2/orgs/test",
-			expectedURL: "https://proxy.example.com/buildkite/api/v2/orgs/test",
-		},
-		{
-			name:        "should return original URL when input URL is malformed",
-			baseURL:     "https://buildkite.proxy.com/",
-			inputURL:    "://malformed-url",
-			expectedURL: "://malformed-url",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock buildkite client with the desired base URL
 			client, err := buildkite.NewOpts(
 				buildkite.WithTokenAuth("fake-token"),
-				buildkite.WithBaseURL(tt.baseURL),
+				buildkite.WithBaseURL(srv.URL+tt.basePath),
 			)
 			assert.NoError(err)
 
 			adapter := &BuildkiteClientAdapter{Client: client}
-			result := adapter.rewriteArtifactURL(tt.inputURL)
-			assert.Equal(tt.expectedURL, result)
+
+			var buf bytes.Buffer
+			resp, err := adapter.DownloadArtifact(context.Background(), "myorg", "my-pipeline", "123", "abc", "def", &buf)
+			assert.NoError(err)
+			assert.Equal(200, resp.StatusCode)
+			assert.Equal("artifact-bytes", buf.String())
+			assert.Equal(tt.wantPath, gotPath)
 		})
 	}
-}
-
-func TestBuildkiteClientAdapter_URLRewritingEdgeCases(t *testing.T) {
-	assert := require.New(t)
-
-	// Test edge cases
-	t.Run("should handle nil base URL", func(t *testing.T) {
-		adapter := &BuildkiteClientAdapter{
-			Client: &buildkite.Client{},
-		}
-		result := adapter.rewriteArtifactURL("https://api.buildkite.com/test")
-		assert.Equal("https://api.buildkite.com/test", result)
-	})
-
-	t.Run("should handle empty base URL", func(t *testing.T) {
-		client, err := buildkite.NewOpts(
-			buildkite.WithTokenAuth("fake-token"),
-			buildkite.WithBaseURL(""),
-		)
-		assert.NoError(err)
-
-		adapter := &BuildkiteClientAdapter{Client: client}
-		result := adapter.rewriteArtifactURL("https://api.buildkite.com/test")
-		assert.Equal("https://api.buildkite.com/test", result)
-	})
-
-	t.Run("should handle base URL with only root path", func(t *testing.T) {
-		client, err := buildkite.NewOpts(
-			buildkite.WithTokenAuth("fake-token"),
-			buildkite.WithBaseURL("https://proxy.example.com/"),
-		)
-		assert.NoError(err)
-
-		adapter := &BuildkiteClientAdapter{Client: client}
-		result := adapter.rewriteArtifactURL("https://api.buildkite.com/v2/test")
-		assert.Equal("https://proxy.example.com/v2/test", result)
-	})
 }
