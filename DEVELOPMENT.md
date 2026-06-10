@@ -143,6 +143,10 @@ Standard HAR viewers (Chrome DevTools, [HAR Analyzer](https://toolbox.googleapps
 
 - **Full-file rewrite on every request.** Each API call re-marshals and rewrites the entire HAR file. This is fine for typical eval sessions (tens to low hundreds of calls) but will slow down recording for very large sessions. A future improvement would be to append a JSON line and only rewrite on close.
 
+- **Job log blob storage is not captured.** Recording intercepts HTTP calls made through the Buildkite API client transport only. Job log fetches that go through `BKLOG_CACHE_URL` (the gocloud blob storage path) use a separate HTTP client and will not appear in the HAR. Evals that exercise log tools with caching enabled may therefore behave differently between record and replay — the log fetch will succeed during recording (real network) but fail during replay (no entry in the HAR). Disable the cache (`BKLOG_CACHE_URL` unset) when recording sessions intended for log-tool evals.
+
+- **Transport errors are not recorded.** Only requests that receive an HTTP response are written to the HAR. If the underlying transport returns an error (connection refused, timeout, DNS failure), the call is not captured and the error is returned to the caller as normal. Replay cannot reproduce those failure modes.
+
 # Tracing
 
 To enable tracing in the MCP server you need to add some environment variables in the configuration, the example below is showing the claude desktop configuration paired with [honeycomb](https://honeycomb.io), however any OTEL service will work as long as it supports GRPC.
