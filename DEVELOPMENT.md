@@ -139,6 +139,10 @@ Because the HAR format is plain JSON you can hand-edit a recorded file to simula
 
 Standard HAR viewers (Chrome DevTools, [HAR Analyzer](https://toolbox.googleapps.com/apps/har_analyzer/)) can open the files for inspection.
 
+## Known limitations
+
+- **Full-file rewrite on every request.** Each API call re-marshals and rewrites the entire HAR file. This is fine for typical eval sessions (tens to low hundreds of calls) but will slow down recording for very large sessions. A future improvement would be to append a JSON line and only rewrite on close.
+
 # Tracing
 
 To enable tracing in the MCP server you need to add some environment variables in the configuration, the example below is showing the claude desktop configuration paired with [honeycomb](https://honeycomb.io), however any OTEL service will work as long as it supports GRPC.
