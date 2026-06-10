@@ -70,13 +70,13 @@ func TestRecordingTransport(t *testing.T) {
 	resp1, err := transport.RoundTrip(req1)
 	r.NoError(err)
 	body1, _ := io.ReadAll(resp1.Body)
-	r.Equal(`{"id":"org1"}`, string(body1))
+	r.JSONEq(`{"id":"org1"}`, string(body1))
 
 	req2, _ := http.NewRequest("GET", "https://api.buildkite.com/v2/organizations/my-org/pipelines", nil)
 	resp2, err := transport.RoundTrip(req2)
 	r.NoError(err)
 	body2, _ := io.ReadAll(resp2.Body)
-	r.Equal(`[{"slug":"my-pipeline"}]`, string(body2))
+	r.JSONEq(`[{"slug":"my-pipeline"}]`, string(body2))
 
 	har, err := recording.LoadHAR(harPath)
 	r.NoError(err)
@@ -86,7 +86,7 @@ func TestRecordingTransport(t *testing.T) {
 	r.Equal("GET", e0.Request.Method)
 	r.Equal("https://api.buildkite.com/v2/organizations", e0.Request.URL)
 	r.Equal(200, e0.Response.Status)
-	r.Equal(`{"id":"org1"}`, e0.Response.Content.Text)
+	r.JSONEq(`{"id":"org1"}`, e0.Response.Content.Text)
 	// Authorization header must be stripped
 	for _, h := range e0.Request.Headers {
 		r.NotEqual("Authorization", h.Name)
@@ -94,7 +94,7 @@ func TestRecordingTransport(t *testing.T) {
 
 	e1 := har.Log.Entries[1]
 	r.Equal("https://api.buildkite.com/v2/organizations/my-org/pipelines", e1.Request.URL)
-	r.Equal(`[{"slug":"my-pipeline"}]`, e1.Response.Content.Text)
+	r.JSONEq(`[{"slug":"my-pipeline"}]`, e1.Response.Content.Text)
 }
 
 func TestRecordingTransportPostBody(t *testing.T) {
@@ -184,13 +184,13 @@ func TestReplayTransportAnyOrder(t *testing.T) {
 	resp2, err := replay.RoundTrip(replayReq2)
 	r.NoError(err)
 	body2, _ := io.ReadAll(resp2.Body)
-	r.Equal(`[{"slug":"my-pipeline"}]`, string(body2))
+	r.JSONEq(`[{"slug":"my-pipeline"}]`, string(body2))
 
 	replayReq1, _ := http.NewRequest("GET", "https://api.buildkite.com/v2/organizations", nil)
 	resp1, err := replay.RoundTrip(replayReq1)
 	r.NoError(err)
 	body1, _ := io.ReadAll(resp1.Body)
-	r.Equal(`{"id":"org1"}`, string(body1))
+	r.JSONEq(`{"id":"org1"}`, string(body1))
 }
 
 func TestReplayTransportPostBodyMatching(t *testing.T) {
@@ -224,7 +224,7 @@ func TestReplayTransportPostBodyMatching(t *testing.T) {
 	resp2, err := replay.RoundTrip(replayReq2)
 	r.NoError(err)
 	got2, _ := io.ReadAll(resp2.Body)
-	r.Equal(`{"number":2}`, string(got2))
+	r.JSONEq(`{"number":2}`, string(got2))
 
 	// Request body1 — should get response 1
 	replayReq1, _ := http.NewRequest("POST", url, strings.NewReader(body1))
@@ -232,7 +232,7 @@ func TestReplayTransportPostBodyMatching(t *testing.T) {
 	resp1, err := replay.RoundTrip(replayReq1)
 	r.NoError(err)
 	got1, _ := io.ReadAll(resp1.Body)
-	r.Equal(`{"number":1}`, string(got1))
+	r.JSONEq(`{"number":1}`, string(got1))
 }
 
 func TestReplayTransportBinaryResponse(t *testing.T) {
@@ -282,13 +282,13 @@ func TestReplayTransportRepeatedURL(t *testing.T) {
 	resp, err := replay.RoundTrip(req)
 	r.NoError(err)
 	body, _ := io.ReadAll(resp.Body)
-	r.Equal(`[{"slug":"page1"}]`, string(body))
+	r.JSONEq(`[{"slug":"page1"}]`, string(body))
 
 	req2, _ := http.NewRequest("GET", "https://api.buildkite.com/v2/organizations/my-org/pipelines?page=1", nil)
 	resp2, err := replay.RoundTrip(req2)
 	r.NoError(err)
 	body2, _ := io.ReadAll(resp2.Body)
-	r.Equal(`[{"slug":"page2"}]`, string(body2))
+	r.JSONEq(`[{"slug":"page2"}]`, string(body2))
 }
 
 func TestReplayTransportErrors(t *testing.T) {
@@ -386,7 +386,7 @@ func TestReplayTransportBaseURLMismatch(t *testing.T) {
 	resp, err := replay.RoundTrip(replayReq)
 	r.NoError(err)
 	body, _ := io.ReadAll(resp.Body)
-	r.Equal(`[{"slug":"my-pipeline"}]`, string(body))
+	r.JSONEq(`[{"slug":"my-pipeline"}]`, string(body))
 }
 
 // TestFullClientStackIntegration exercises the recording and replay transports wired into the
@@ -444,11 +444,11 @@ func TestFullClientStackIntegration(t *testing.T) {
 	resp2, err := replayClient.Do(req2)
 	r.NoError(err)
 	body2, _ := io.ReadAll(resp2.Body)
-	r.Equal(`[{"slug":"my-pipe"}]`, string(body2))
+	r.JSONEq(`[{"slug":"my-pipe"}]`, string(body2))
 
 	req1, _ := http.NewRequest("GET", srv.URL+"/v2/organizations", nil)
 	resp1, err := replayClient.Do(req1)
 	r.NoError(err)
 	body1, _ := io.ReadAll(resp1.Body)
-	r.Equal(`[{"slug":"my-org"}]`, string(body1))
+	r.JSONEq(`[{"slug":"my-org"}]`, string(body1))
 }

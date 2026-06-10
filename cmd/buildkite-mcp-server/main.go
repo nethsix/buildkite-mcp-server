@@ -83,7 +83,7 @@ func run(ctx context.Context, cmd *kong.Context) error {
 		}
 	}
 
-	var innerTransport http.RoundTripper = http.DefaultTransport
+	innerTransport := http.RoundTripper(http.DefaultTransport)
 	if cli.Record != "" {
 		recTransport, recErr := recording.NewRecordingTransport(http.DefaultTransport, cli.Record, version)
 		if recErr != nil {

@@ -3,6 +3,7 @@ package recording
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 )
 
 // HAR is the top-level structure of an HTTP Archive (HAR 1.2) file.
@@ -105,5 +106,5 @@ func (h *HAR) save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(filepath.Clean(path), data, 0o600) //nolint:gosec // path is a user-supplied output file
 }
