@@ -98,6 +98,55 @@ git fetch && git pull
 GITHUB_TOKEN=$(gh auth token) goreleaser release
 ```
 
+# Recording and replaying API calls for offline evals
+
+The server can record every Buildkite API call it makes to an [HTTP Archive (HAR)](https://en.wikipedia.org/wiki/HAR_(file_format)) file, then replay that file later without a network connection. This is useful for running LLM evals reproducibly — record one real session, then run multiple models (or prompt variants) against the exact same API responses.
+
+## Record a session
+
+Pass `--record <path>` when starting the server. The file is created immediately (to catch permission errors early) and each API response is appended as it is made.
+
+```bash
+BUILDKITE_API_TOKEN=bkua_xxx buildkite-mcp-server stdio --record ./testdata/my-scenario.har
+```
+
+Drive the server with your MCP client or an LLM as normal. When the session ends the HAR file contains every request/response pair.
+
+A few things to note about the recorded file:
+- `Authorization` headers are stripped before writing, so the file is safe to commit.
+- Binary responses (gzip logs, artifacts) are stored as base64 with `"encoding": "base64"`.
+- POST/PUT request bodies are stored in `postData` so distinct writes to the same endpoint are matched correctly on replay.
+
+## Replay offline
+
+Pass `--replay <path>` to serve responses from a previously recorded HAR file. No API token is required.
+
+```bash
+buildkite-mcp-server stdio --replay ./testdata/my-scenario.har
+```
+
+Replay matches requests by **method + URL** (plus request body for write methods), not by call order, so the LLM can reach the same endpoints in any sequence. If the same URL appears more than once in the HAR (e.g. paginated requests), each call consumes the next recorded entry for that URL in the order they were recorded.
+
+The server returns a clear error if a tool makes a request for which no HAR entry exists, making it easy to detect when a scenario is incomplete.
+
+## Creating error scenarios
+
+Because the HAR format is plain JSON you can hand-edit a recorded file to simulate failure cases:
+
+- Change a `"status": 200` to `"status": 404` and update the `"text"` body.
+- Delete an entry entirely to trigger a "no recorded entry" error for that call.
+- Duplicate an entry to simulate a retry.
+
+Standard HAR viewers (Chrome DevTools, [HAR Analyzer](https://toolbox.googleapps.com/apps/har_analyzer/)) can open the files for inspection.
+
+## Known limitations
+
+- **Full-file rewrite on every request.** Each API call re-marshals and rewrites the entire HAR file. This is fine for typical eval sessions (tens to low hundreds of calls) but will slow down recording for very large sessions. A future improvement would be to append a JSON line and only rewrite on close.
+
+- **Job log blob storage is not captured.** Recording intercepts HTTP calls made through the Buildkite API client transport only. Job log fetches that go through `BKLOG_CACHE_URL` (the gocloud blob storage path) use a separate HTTP client and will not appear in the HAR. Evals that exercise log tools with caching enabled may therefore behave differently between record and replay — the log fetch will succeed during recording (real network) but fail during replay (no entry in the HAR). Disable the cache (`BKLOG_CACHE_URL` unset) when recording sessions intended for log-tool evals.
+
+- **Transport errors are not recorded.** Only requests that receive an HTTP response are written to the HAR. If the underlying transport returns an error (connection refused, timeout, DNS failure), the call is not captured and the error is returned to the caller as normal. Replay cannot reproduce those failure modes.
+
 # Tracing
 
 To enable tracing in the MCP server you need to add some environment variables in the configuration, the example below is showing the claude desktop configuration paired with [honeycomb](https://honeycomb.io), however any OTEL service will work as long as it supports GRPC.
