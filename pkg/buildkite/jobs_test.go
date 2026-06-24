@@ -14,9 +14,33 @@ import (
 
 // MockJobsClient for testing job functionality
 type MockJobsClient struct {
+	ListByBuildFunc                func(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error)
+	GetJobFunc                     func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.Job, *buildkite.Response, error)
+	GetJobByOrgFunc                func(ctx context.Context, org string, jobID string) (buildkite.Job, *buildkite.Response, error)
 	UnblockJobFunc                 func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string, opt *buildkite.JobUnblockOptions) (buildkite.Job, *buildkite.Response, error)
 	RetryJobFunc                   func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.Job, *buildkite.Response, error)
 	GetJobEnvironmentVariablesFunc func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.JobEnvs, *buildkite.Response, error)
+}
+
+func (m *MockJobsClient) ListByBuild(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error) {
+	if m.ListByBuildFunc != nil {
+		return m.ListByBuildFunc(ctx, org, pipeline, buildNumber, opt)
+	}
+	return buildkite.JobsList{}, &buildkite.Response{}, nil
+}
+
+func (m *MockJobsClient) GetJob(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+	if m.GetJobFunc != nil {
+		return m.GetJobFunc(ctx, org, pipeline, buildNumber, jobID)
+	}
+	return buildkite.Job{}, &buildkite.Response{}, nil
+}
+
+func (m *MockJobsClient) GetJobByOrg(ctx context.Context, org string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+	if m.GetJobByOrgFunc != nil {
+		return m.GetJobByOrgFunc(ctx, org, jobID)
+	}
+	return buildkite.Job{}, &buildkite.Response{}, nil
 }
 
 func (m *MockJobsClient) UnblockJob(ctx context.Context, org string, pipeline string, buildNumber string, jobID string, opt *buildkite.JobUnblockOptions) (buildkite.Job, *buildkite.Response, error) {
@@ -272,5 +296,155 @@ func TestGetJobEnvironmentVariables(t *testing.T) {
 		})
 		require.NoError(t, err)
 		assert.Contains(t, result.Content[0].(*mcp.TextContent).Text, "access denied")
+	})
+}
+
+func TestListJobs(t *testing.T) {
+	t.Run("ToolDefinition", func(t *testing.T) {
+		tool, handler, scopes := ListJobs()
+		assert.Equal(t, "list_jobs", tool.Name)
+		assert.Contains(t, tool.Description, "List jobs")
+		assert.True(t, tool.Annotations.ReadOnlyHint)
+		assert.Equal(t, []string{"read_builds"}, scopes)
+		assert.NotNil(t, handler)
+	})
+
+	t.Run("SuccessfulListWithFiltersAndPagination", func(t *testing.T) {
+		var captured *buildkite.JobsListOptions
+		mockJobs := &MockJobsClient{
+			ListByBuildFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error) {
+				captured = opt
+				assert.Equal(t, "test-org", org)
+				assert.Equal(t, "test-pipeline", pipeline)
+				assert.Equal(t, "123", buildNumber)
+				return buildkite.JobsList{
+					Items: []buildkite.Job{{ID: "job-1", State: "passed"}},
+					Links: buildkite.JobsListLinks{Next: "https://api.buildkite.com/v2/...?after=cursor2"},
+				}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := ListJobs()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug:            "test-org",
+			PipelineSlug:       "test-pipeline",
+			BuildNumber:        "123",
+			State:              "passed, failed",
+			IncludeRetriedJobs: boolPtr(false),
+			PerPage:            50,
+			After:              "cursor1",
+		})
+		require.NoError(t, err)
+
+		text := getTextResult(t, result).Text
+		assert.Contains(t, text, `"items":[`)
+		assert.Contains(t, text, `"id":"job-1"`)
+		assert.Contains(t, text, `"next":"https://api.buildkite.com`)
+
+		require.NotNil(t, captured)
+		assert.Equal(t, []string{"passed", "failed"}, captured.State)
+		require.NotNil(t, captured.IncludeRetriedJobs)
+		assert.False(t, *captured.IncludeRetriedJobs)
+		assert.Equal(t, 50, captured.PerPage)
+		assert.Equal(t, "cursor1", captured.After)
+	})
+
+	t.Run("AfterAndBeforeMutuallyExclusive", func(t *testing.T) {
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: &MockJobsClient{}})
+		_, handler, _ := ListJobs()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug:      "test-org",
+			PipelineSlug: "test-pipeline",
+			BuildNumber:  "123",
+			After:        "a",
+			Before:       "b",
+		})
+		require.NoError(t, err)
+		assert.Contains(t, getTextResult(t, result).Text, "mutually exclusive")
+	})
+}
+
+func TestGetJob(t *testing.T) {
+	t.Run("ToolDefinition", func(t *testing.T) {
+		tool, handler, scopes := GetJob()
+		assert.Equal(t, "get_job", tool.Name)
+		assert.Contains(t, tool.Description, "Get a single job")
+		assert.True(t, tool.Annotations.ReadOnlyHint)
+		assert.Equal(t, []string{"read_builds"}, scopes)
+		assert.NotNil(t, handler)
+	})
+
+	t.Run("BuildScopedLookup", func(t *testing.T) {
+		called := false
+		mockJobs := &MockJobsClient{
+			GetJobFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+				called = true
+				assert.Equal(t, "test-org", org)
+				assert.Equal(t, "test-pipeline", pipeline)
+				assert.Equal(t, "123", buildNumber)
+				assert.Equal(t, "job-456", jobID)
+				return buildkite.Job{ID: jobID, State: "passed"}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
+			},
+			GetJobByOrgFunc: func(ctx context.Context, org string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+				t.Fatal("GetJobByOrg should not be called for a build-scoped lookup")
+				return buildkite.Job{}, nil, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := GetJob()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), GetJobArgs{
+			OrgSlug:      "test-org",
+			PipelineSlug: "test-pipeline",
+			BuildNumber:  "123",
+			JobID:        "job-456",
+		})
+		require.NoError(t, err)
+		assert.True(t, called)
+		assert.Contains(t, getTextResult(t, result).Text, `"id":"job-456"`)
+	})
+
+	t.Run("OrgScopedLookup", func(t *testing.T) {
+		called := false
+		mockJobs := &MockJobsClient{
+			GetJobByOrgFunc: func(ctx context.Context, org string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+				called = true
+				assert.Equal(t, "test-org", org)
+				assert.Equal(t, "job-456", jobID)
+				return buildkite.Job{ID: jobID, State: "running"}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
+			},
+			GetJobFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+				t.Fatal("GetJob should not be called for an org-scoped lookup")
+				return buildkite.Job{}, nil, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := GetJob()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), GetJobArgs{
+			OrgSlug: "test-org",
+			JobID:   "job-456",
+		})
+		require.NoError(t, err)
+		assert.True(t, called)
+		assert.Contains(t, getTextResult(t, result).Text, `"state":"running"`)
+	})
+
+	t.Run("PartialBuildScopeIsRejected", func(t *testing.T) {
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: &MockJobsClient{}})
+		_, handler, _ := GetJob()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), GetJobArgs{
+			OrgSlug:      "test-org",
+			JobID:        "job-456",
+			PipelineSlug: "test-pipeline", // build_number missing
+		})
+		require.NoError(t, err)
+		assert.Contains(t, getTextResult(t, result).Text, "provide both")
 	})
 }
