@@ -2,10 +2,8 @@ package buildkite
 
 import (
 	"context"
-	"strings"
 
 	"github.com/buildkite/buildkite-mcp-server/pkg/trace"
-	"github.com/buildkite/buildkite-mcp-server/pkg/utils"
 	"github.com/buildkite/go-buildkite/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.opentelemetry.io/otel/attribute"
@@ -20,12 +18,6 @@ type BuildsClient interface {
 	Rebuild(ctx context.Context, org, pipeline, buildNumber string) (buildkite.Build, error)
 }
 
-// JobSummary represents a summary of jobs grouped by state, with finished jobs classified as passed/failed
-type JobSummary struct {
-	Total   int            `json:"total"`
-	ByState map[string]int `json:"by_state"`
-}
-
 // BuildSummary - Essential build fields for list responses
 type BuildSummary struct {
 	ID        string               `json:"id"`
@@ -38,30 +30,6 @@ type BuildSummary struct {
 	CreatedAt *buildkite.Timestamp `json:"created_at"`
 }
 
-// JobEntry represents a lightweight job reference with just enough info to identify and filter jobs
-type JobEntry struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	State string `json:"state"`
-}
-
-// BuildDetail - Medium detail with lightweight job listing
-type BuildDetail struct {
-	BuildSummary                      // Embed summary fields
-	Source       string               `json:"source"`
-	Author       buildkite.Author     `json:"author"`
-	StartedAt    *buildkite.Timestamp `json:"started_at"`
-	FinishedAt   *buildkite.Timestamp `json:"finished_at"`
-	JobSummary   *JobSummary          `json:"job_summary"`
-	Jobs         []JobEntry           `json:"jobs"`
-}
-
-// BuildWithSummary represents a build with job summary and optionally full job details
-type BuildWithSummary struct {
-	buildkite.Build
-	JobSummary *JobSummary `json:"job_summary"`
-}
-
 // ListBuildsArgs struct with enhanced filtering
 type ListBuildsArgs struct {
 	OrgSlug      string `json:"org_slug"`
@@ -70,7 +38,6 @@ type ListBuildsArgs struct {
 	State        string `json:"state,omitempty" jsonschema:"Filter builds by state (scheduled\\, running\\, passed\\, failed\\, canceled\\, skipped)"`
 	Commit       string `json:"commit,omitempty" jsonschema:"Filter builds by specific commit SHA"`
 	Creator      string `json:"creator,omitempty" jsonschema:"Filter builds by build creator"`
-	DetailLevel  string `json:"detail_level,omitempty" jsonschema:"Response detail level: 'summary' (default)\\, 'detailed'\\, or 'full'"` // summary, detailed, full
 	Page         int    `json:"page,omitempty" jsonschema:"Page number for pagination (min 1)"`
 	PerPage      int    `json:"per_page,omitempty" jsonschema:"Results per page for pagination (min 1\\, max 100)"`
 }
@@ -80,9 +47,6 @@ type GetBuildArgs struct {
 	OrgSlug      string `json:"org_slug"`
 	PipelineSlug string `json:"pipeline_slug"`
 	BuildNumber  string `json:"build_number"`
-	DetailLevel  string `json:"detail_level,omitempty" jsonschema:"Response detail level: 'detailed' (default) or 'full'. Detailed includes job IDs/names/states; full includes complete job objects"`
-	JobState     string `json:"job_state,omitempty" jsonschema:"Filter jobs by state. Comma-separated for multiple states (e.g.\\, 'failed\\,broken\\,canceled')"`
-	IncludeAgent bool   `json:"include_agent,omitempty" jsonschema:"Include full agent details in job objects. When false (default)\\, only agent.id is included"`
 }
 
 // GetBuildTestEngineRunsArgs struct
@@ -108,40 +72,6 @@ func summarizeBuild(build buildkite.Build) BuildSummary {
 	}
 }
 
-// detailBuild converts a buildkite.Build to BuildDetail with job summary
-// filteredJobs is used for job_summary stats and lightweight job entries
-func detailBuild(build buildkite.Build, filteredJobs []buildkite.Job) BuildDetail {
-	summary := summarizeBuild(build)
-
-	// Create job summary and lightweight job entries from filtered jobs
-	jobSummary := &JobSummary{
-		Total:   len(filteredJobs),
-		ByState: make(map[string]int),
-	}
-	jobEntries := make([]JobEntry, len(filteredJobs))
-
-	for i, job := range filteredJobs {
-		if job.State != "" {
-			jobSummary.ByState[job.State]++
-		}
-		jobEntries[i] = JobEntry{
-			ID:    job.ID,
-			Name:  job.Name,
-			State: job.State,
-		}
-	}
-
-	return BuildDetail{
-		BuildSummary: summary,
-		Source:       build.Source,
-		Author:       build.Author,
-		StartedAt:    build.StartedAt,
-		FinishedAt:   build.FinishedAt,
-		JobSummary:   jobSummary, // job_summary reflects filtered jobs
-		Jobs:         jobEntries,
-	}
-}
-
 // createPaginatedBuildResult creates a paginated result with the appropriate converter
 func createPaginatedBuildResult[T any](builds []buildkite.Build, converter func(buildkite.Build) T, headers map[string]string) PaginatedResult[T] {
 	items := make([]T, len(builds))
@@ -158,7 +88,7 @@ func createPaginatedBuildResult[T any](builds []buildkite.Build, converter func(
 func ListBuilds() (mcp.Tool, mcp.ToolHandlerFor[ListBuildsArgs, any], []string) {
 	return mcp.Tool{
 			Name:        "list_builds",
-			Description: "List builds for a pipeline or across all pipelines in an organization. When pipeline_slug is omitted, lists builds across all pipelines in the organization",
+			Description: "List builds for a pipeline or across all pipelines in an organization, returning a lightweight summary of each build. When pipeline_slug is omitted, lists builds across all pipelines in the organization. Jobs are not included — use list_jobs or get_job for job detail",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "List Builds",
 				ReadOnlyHint: true,
@@ -175,16 +105,9 @@ func ListBuilds() (mcp.Tool, mcp.ToolHandlerFor[ListBuildsArgs, any], []string) 
 				attribute.String("state", args.State),
 				attribute.String("commit", args.Commit),
 				attribute.String("creator", args.Creator),
-				attribute.String("detail_level", args.DetailLevel),
 				attribute.Int("page", args.Page),
 				attribute.Int("per_page", args.PerPage),
 			)
-
-			// Set default detail level
-			detailLevel := args.DetailLevel
-			if detailLevel == "" {
-				detailLevel = "summary"
-			}
 
 			// Set default pagination
 			page := args.Page
@@ -196,31 +119,15 @@ func ListBuilds() (mcp.Tool, mcp.ToolHandlerFor[ListBuildsArgs, any], []string) 
 				perPage = 30
 			}
 
+			// Builds are returned as lightweight summaries; jobs and pipeline
+			// detail are excluded. Use list_jobs/get_job for job detail.
 			options := &buildkite.BuildsListOptions{
-				ExcludeJobs: true,
+				ExcludeJobs:     true,
+				ExcludePipeline: true,
 				ListOptions: buildkite.ListOptions{
 					Page:    page,
 					PerPage: perPage,
 				},
-			}
-
-			// Set exclusions based on detail level
-			switch detailLevel {
-			case "summary":
-				options.ExcludeJobs = true
-				// Only exclude pipeline when it's already known from the request
-				if args.PipelineSlug != "" {
-					options.ExcludePipeline = true
-				}
-			case "detailed":
-				options.ExcludeJobs = true
-				if args.PipelineSlug != "" {
-					options.ExcludePipeline = true
-				}
-			case "full":
-				// Include everything
-			default:
-				return utils.NewToolResultError("detail_level must be 'summary', 'detailed', or 'full'"), nil, nil
 			}
 
 			// Apply filters
@@ -254,21 +161,7 @@ func ListBuilds() (mcp.Tool, mcp.ToolHandlerFor[ListBuildsArgs, any], []string) 
 				"Link": resp.Header.Get("Link"),
 			}
 
-			var result any
-			switch detailLevel {
-			case "summary":
-				result = createPaginatedBuildResult(builds, summarizeBuild, headers)
-			case "detailed":
-				// For list_builds, use all jobs (no filtering)
-				result = createPaginatedBuildResult(builds, func(b buildkite.Build) BuildDetail {
-					return detailBuild(b, b.Jobs)
-				}, headers)
-			case "full":
-				result = PaginatedResult[buildkite.Build]{
-					Items:   builds,
-					Headers: headers,
-				}
-			}
+			result := createPaginatedBuildResult(builds, summarizeBuild, headers)
 
 			return mcpTextResult(span, result)
 		}, []string{"read_builds"}
@@ -314,7 +207,7 @@ func GetBuildTestEngineRuns() (mcp.Tool, mcp.ToolHandlerFor[GetBuildTestEngineRu
 func GetBuild() (mcp.Tool, mcp.ToolHandlerFor[GetBuildArgs, any], []string) {
 	return mcp.Tool{
 			Name:        "get_build",
-			Description: "Get build information including job IDs, names, and states. Use job_state to filter (e.g. 'failed,broken'). Returns enough detail to identify which jobs to investigate with log and artifact tools",
+			Description: "Get a single build. Jobs are not included — use list_jobs or get_job for job detail",
 			Annotations: &mcp.ToolAnnotations{
 				Title:        "Get Build",
 				ReadOnlyHint: true,
@@ -328,33 +221,14 @@ func GetBuild() (mcp.Tool, mcp.ToolHandlerFor[GetBuildArgs, any], []string) {
 				attribute.String("org_slug", args.OrgSlug),
 				attribute.String("pipeline_slug", args.PipelineSlug),
 				attribute.String("build_number", args.BuildNumber),
-				attribute.String("detail_level", args.DetailLevel),
-				attribute.String("job_state", args.JobState),
-				attribute.Bool("include_agent", args.IncludeAgent),
 			)
 
-			// Set default detail level
-			detailLevel := args.DetailLevel
-			if detailLevel == "" {
-				detailLevel = "detailed"
-			}
-
-			// Configure build get options based on detail level
+			// Jobs are excluded; use list_jobs/get_job for job detail.
 			options := &buildkite.BuildGetOptions{
 				BuildsListOptions: buildkite.BuildsListOptions{
 					ExcludeJobs: true,
 				},
 				IncludeTestEngine: true,
-			}
-
-			// Push job state filtering down to the API
-			if args.JobState != "" {
-				states := strings.Split(args.JobState, ",")
-				jobStates := make([]string, len(states))
-				for i, state := range states {
-					jobStates[i] = strings.TrimSpace(state)
-				}
-				options.JobStates = jobStates
 			}
 
 			deps := DepsFromContext(ctx)
@@ -363,45 +237,7 @@ func GetBuild() (mcp.Tool, mcp.ToolHandlerFor[GetBuildArgs, any], []string) {
 				return handleBuildkiteError(err)
 			}
 
-			jobs := build.Jobs
-
-			// Strip agent details if not requested
-			if !args.IncludeAgent && len(jobs) > 0 {
-				jobsWithMinimalAgent := make([]buildkite.Job, len(jobs))
-				for i, job := range jobs {
-					jobCopy := job
-					// Keep only agent ID, strip verbose details
-					jobCopy.Agent = buildkite.Agent{ID: job.Agent.ID}
-					jobsWithMinimalAgent[i] = jobCopy
-				}
-				jobs = jobsWithMinimalAgent
-			}
-
-			var result any
-			switch detailLevel {
-			case "detailed":
-				result = detailBuild(build, jobs)
-			case "full":
-				// Full level returns build with filtered jobs
-				buildCopy := build
-				buildCopy.Pipeline = nil // reduce size by excluding pipeline details
-
-				// Strip fields from jobs
-				for i := range jobs {
-					jobs[i].WebURL = ""       // not useful in MCP
-					jobs[i].RawLogsURL = ""   // provided by another tool
-					jobs[i].ArtifactsURL = "" // provided by another tool
-					jobs[i].LogsURL = ""      // deprecated
-					jobs[i].GraphQLID = ""    // random id not useful in the MCP
-				}
-
-				buildCopy.Jobs = jobs
-				result = buildCopy
-			default:
-				return utils.NewToolResultError("detail_level must be 'detailed' or 'full'"), nil, nil
-			}
-
-			return mcpTextResult(span, &result)
+			return mcpTextResult(span, &build)
 		}, []string{"read_builds"}
 }
 

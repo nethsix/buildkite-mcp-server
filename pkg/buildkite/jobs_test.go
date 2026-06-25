@@ -2,6 +2,7 @@ package buildkite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
@@ -351,6 +352,47 @@ func TestListJobs(t *testing.T) {
 		assert.Equal(t, "cursor1", captured.After)
 	})
 
+	t.Run("RedactsUnusedJobFields", func(t *testing.T) {
+		mockJobs := &MockJobsClient{
+			ListByBuildFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error) {
+				return buildkite.JobsList{
+					Items: []buildkite.Job{{
+						ID:           "job-1",
+						State:        "passed",
+						WebURL:       "https://buildkite.com/test-org/test-pipeline/builds/123#job-1",
+						RawLogsURL:   "https://api.buildkite.com/v2/logs/raw",
+						ArtifactsURL: "https://api.buildkite.com/v2/artifacts",
+						LogsURL:      "https://api.buildkite.com/v2/logs",
+						GraphQLID:    "graphql-job-id",
+					}},
+					Links: buildkite.JobsListLinks{Next: "https://api.buildkite.com/v2/...?after=cursor2"},
+				}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := ListJobs()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug:      "test-org",
+			PipelineSlug: "test-pipeline",
+			BuildNumber:  "123",
+		})
+		require.NoError(t, err)
+
+		var jobs buildkite.JobsList
+		require.NoError(t, json.Unmarshal([]byte(getTextResult(t, result).Text), &jobs))
+		require.Len(t, jobs.Items, 1)
+		assert.Equal(t, "job-1", jobs.Items[0].ID)
+		assert.Equal(t, "passed", jobs.Items[0].State)
+		assert.Equal(t, "https://api.buildkite.com/v2/...?after=cursor2", string(jobs.Links.Next))
+		assert.Empty(t, jobs.Items[0].WebURL)
+		assert.Empty(t, jobs.Items[0].RawLogsURL)
+		assert.Empty(t, jobs.Items[0].ArtifactsURL)
+		assert.Empty(t, jobs.Items[0].LogsURL)
+		assert.Empty(t, jobs.Items[0].GraphQLID)
+	})
+
 	t.Run("AfterAndBeforeMutuallyExclusive", func(t *testing.T) {
 		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: &MockJobsClient{}})
 		_, handler, _ := ListJobs()
@@ -406,6 +448,43 @@ func TestGetJob(t *testing.T) {
 		require.NoError(t, err)
 		assert.True(t, called)
 		assert.Contains(t, getTextResult(t, result).Text, `"id":"job-456"`)
+	})
+
+	t.Run("RedactsUnusedJobFields", func(t *testing.T) {
+		mockJobs := &MockJobsClient{
+			GetJobByOrgFunc: func(ctx context.Context, org string, jobID string) (buildkite.Job, *buildkite.Response, error) {
+				assert.Equal(t, "test-org", org)
+				assert.Equal(t, "job-456", jobID)
+				return buildkite.Job{
+					ID:           jobID,
+					State:        "running",
+					WebURL:       "https://buildkite.com/test-org/test-pipeline/builds/123#job-456",
+					RawLogsURL:   "https://api.buildkite.com/v2/logs/raw",
+					ArtifactsURL: "https://api.buildkite.com/v2/artifacts",
+					LogsURL:      "https://api.buildkite.com/v2/logs",
+					GraphQLID:    "graphql-job-id",
+				}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := GetJob()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), GetJobArgs{
+			OrgSlug: "test-org",
+			JobID:   "job-456",
+		})
+		require.NoError(t, err)
+
+		var job buildkite.Job
+		require.NoError(t, json.Unmarshal([]byte(getTextResult(t, result).Text), &job))
+		assert.Equal(t, "job-456", job.ID)
+		assert.Equal(t, "running", job.State)
+		assert.Empty(t, job.WebURL)
+		assert.Empty(t, job.RawLogsURL)
+		assert.Empty(t, job.ArtifactsURL)
+		assert.Empty(t, job.LogsURL)
+		assert.Empty(t, job.GraphQLID)
 	})
 
 	t.Run("OrgScopedLookup", func(t *testing.T) {

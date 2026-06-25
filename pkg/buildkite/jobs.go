@@ -20,6 +20,14 @@ type JobsClient interface {
 	GetJobEnvironmentVariables(ctx context.Context, org string, pipeline string, buildNumber string, jobID string) (buildkite.JobEnvs, *buildkite.Response, error)
 }
 
+func redactUnusedJobFields(job *buildkite.Job) {
+	job.WebURL = ""       // not useful in MCP
+	job.RawLogsURL = ""   // provided by another tool
+	job.ArtifactsURL = "" // provided by another tool
+	job.LogsURL = ""      // deprecated
+	job.GraphQLID = ""    // random id not useful in the MCP
+}
+
 // ListJobsArgs struct for typed parameters
 type ListJobsArgs struct {
 	OrgSlug            string `json:"org_slug"`
@@ -79,6 +87,10 @@ func ListJobs() (mcp.Tool, mcp.ToolHandlerFor[ListJobsArgs, any], []string) {
 				return handleBuildkiteError(err)
 			}
 
+			for i := range jobs.Items {
+				redactUnusedJobFields(&jobs.Items[i])
+			}
+
 			return mcpTextResult(span, &jobs)
 		}, []string{"read_builds"}
 }
@@ -127,6 +139,8 @@ func GetJob() (mcp.Tool, mcp.ToolHandlerFor[GetJobArgs, any], []string) {
 			if err != nil {
 				return handleBuildkiteError(err)
 			}
+
+			redactUnusedJobFields(&job)
 
 			return mcpTextResult(span, &job)
 		}, []string{"read_builds"}
