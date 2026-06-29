@@ -425,23 +425,24 @@ func TestGetArtifact_BinaryReturnsURL(t *testing.T) {
 	assert.NotContains(got, "content")
 }
 
-func TestGetArtifact_UnknownSizeTextReturnsURL(t *testing.T) {
+func TestGetArtifact_EmptyTextInline(t *testing.T) {
 	assert := require.New(t)
 
 	downloadCalled := false
 	client := &MockArtifactsClient{
 		GetByJobFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string) (buildkite.Artifact, *buildkite.Response, error) {
 			return buildkite.Artifact{
-				Filename: "artifact.txt",
+				Filename: "empty.txt",
 				MimeType: "text/plain",
 				FileSize: 0,
 			}, nil, nil
 		},
 		ResolveDownloadURLFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string) (string, error) {
-			return "https://example.com/artifact.txt", nil
+			return "https://example.com/empty.txt", nil
 		},
 		DownloadArtifactFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
 			downloadCalled = true
+			// Empty file: nothing is written to the buffer.
 			return nil, nil
 		},
 	}
@@ -457,11 +458,53 @@ func TestGetArtifact_UnknownSizeTextReturnsURL(t *testing.T) {
 		ArtifactID:   "def",
 	})
 	assert.NoError(err)
-	assert.False(downloadCalled)
+	assert.True(downloadCalled)
+
+	got := getJSONResult(t, result)
+	assert.Equal("text", got["encoding"])
+	assert.Empty(got["content"])
+	assert.Equal("https://example.com/empty.txt", got["download_url"])
+}
+
+func TestGetArtifact_OversizedTextReturnsURL(t *testing.T) {
+	assert := require.New(t)
+
+	downloadCalled := false
+	client := &MockArtifactsClient{
+		GetByJobFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string) (buildkite.Artifact, *buildkite.Response, error) {
+			return buildkite.Artifact{
+				Filename: "liar.txt",
+				MimeType: "text/plain",
+				FileSize: 10, // metadata under-reports the real content
+			}, nil, nil
+		},
+		ResolveDownloadURLFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string) (string, error) {
+			return "https://example.com/liar.txt", nil
+		},
+		DownloadArtifactFunc: func(ctx context.Context, org, pipelineSlug, buildNumber, jobID, artifactID string, writer io.Writer) (*buildkite.Response, error) {
+			downloadCalled = true
+			_, err := writer.Write(bytes.Repeat([]byte("a"), int(textArtifactInlineLimit)+1))
+			return nil, err
+		},
+	}
+
+	ctx := ContextWithDeps(context.Background(), ToolDependencies{ArtifactsClient: client})
+	_, handler, _ := GetArtifact()
+
+	result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), GetArtifactArgs{
+		OrgSlug:      "myorg",
+		PipelineSlug: "my-pipeline",
+		BuildNumber:  "123",
+		JobID:        "abc",
+		ArtifactID:   "def",
+	})
+	assert.NoError(err)
+	assert.True(downloadCalled)
 
 	got := getJSONResult(t, result)
 	assert.Equal("url", got["encoding"])
-	assert.Equal("https://example.com/artifact.txt", got["download_url"])
+	assert.Equal("https://example.com/liar.txt", got["download_url"])
+	assert.Contains(got["note"], "larger than expected")
 	assert.NotContains(got, "content")
 }
 
@@ -617,6 +660,34 @@ func TestDownloadURLExpiresInSeconds(t *testing.T) {
 			require.Equal(t, tt.want, downloadURLExpiresInSeconds(tt.downloadURL))
 		})
 	}
+}
+
+func TestInlineLimitWriter(t *testing.T) {
+	assert := require.New(t)
+
+	// Writing exactly the limit buffers everything without flagging overflow.
+	w := &inlineLimitWriter{limit: 4}
+	n, err := w.Write([]byte("abcd"))
+	assert.NoError(err)
+	assert.Equal(4, n)
+	assert.False(w.overflow)
+	assert.Equal("abcd", w.buf.String())
+
+	// A further write past the limit is discarded but still reports success so
+	// the underlying download drains to completion.
+	n, err = w.Write([]byte("e"))
+	assert.NoError(err)
+	assert.Equal(1, n)
+	assert.True(w.overflow)
+	assert.Equal("abcd", w.buf.String())
+
+	// A single oversized write is truncated to the limit.
+	w2 := &inlineLimitWriter{limit: 4}
+	n, err = w2.Write([]byte("abcdef"))
+	assert.NoError(err)
+	assert.Equal(6, n)
+	assert.True(w2.overflow)
+	assert.Equal("abcd", w2.buf.String())
 }
 
 func TestArtifactDownloadPath(t *testing.T) {

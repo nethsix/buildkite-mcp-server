@@ -21,6 +21,31 @@ import (
 
 const textArtifactInlineLimit int64 = 65536 // 64 KiB
 
+// inlineLimitWriter buffers up to limit bytes of artifact content and discards
+// the remainder, recording whether the source exceeded the limit. It bounds the
+// memory used when inlining an artifact whose reported size under-reports the
+// actual content. Write always reports success so the underlying download is
+// drained to completion.
+type inlineLimitWriter struct {
+	buf      bytes.Buffer
+	limit    int64
+	overflow bool
+}
+
+func (w *inlineLimitWriter) Write(p []byte) (int, error) {
+	if remaining := w.limit - int64(w.buf.Len()); remaining > 0 {
+		if int64(len(p)) > remaining {
+			w.buf.Write(p[:remaining])
+			w.overflow = true
+		} else {
+			w.buf.Write(p)
+		}
+	} else if len(p) > 0 {
+		w.overflow = true
+	}
+	return len(p), nil
+}
+
 type ArtifactsClient interface {
 	ListByBuild(ctx context.Context, org, pipelineSlug, buildNumber string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
 	ListByJob(ctx context.Context, org, pipelineSlug, buildNumber string, jobID string, opts *buildkite.ArtifactListOptions) ([]buildkite.Artifact, *buildkite.Response, error)
@@ -316,35 +341,34 @@ func GetArtifact() (mcp.Tool, mcp.ToolHandlerFor[GetArtifactArgs, any], []string
 
 			downloadURL, downloadURLAuth, expiresInSeconds := artifactDownloadURL(ctx, deps.ArtifactsClient, args, artifact)
 
+			// A reported size of zero is an empty file, which is cheap and safe to
+			// inline. The download below is capped regardless, so an artifact whose
+			// reported size under-reports its real content cannot exhaust memory.
 			isInlineText := isTextMIMEType(artifact.MimeType) &&
-				artifact.FileSize > 0 &&
 				artifact.FileSize <= textArtifactInlineLimit
 
 			if isInlineText {
-				var buffer bytes.Buffer
-				_, err := deps.ArtifactsClient.DownloadArtifact(ctx, args.OrgSlug, args.PipelineSlug, args.BuildNumber, args.JobID, args.ArtifactID, &buffer)
+				writer := &inlineLimitWriter{limit: textArtifactInlineLimit}
+				_, err := deps.ArtifactsClient.DownloadArtifact(ctx, args.OrgSlug, args.PipelineSlug, args.BuildNumber, args.JobID, args.ArtifactID, writer)
 				if err != nil {
 					return handleBuildkiteError(err)
 				}
-				if !utf8.Valid(buffer.Bytes()) {
-					result := artifactResult("url", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
-					result["note"] = "Artifact content was not returned inline because it was not valid UTF-8. Use download_url to fetch it directly."
-					if downloadURL == "" {
-						result["note"] = "Artifact content was not returned inline because it was not valid UTF-8, and no download URL was available."
-					}
+
+				switch {
+				case writer.overflow:
+					result := urlArtifactResult(" because it was larger than expected", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
+					return mcpTextResult(span, &result)
+				case !utf8.Valid(writer.buf.Bytes()):
+					result := urlArtifactResult(" because it was not valid UTF-8", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
 					return mcpTextResult(span, &result)
 				}
 
 				result := artifactResult("text", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
-				result["content"] = buffer.String()
+				result["content"] = writer.buf.String()
 				return mcpTextResult(span, &result)
 			}
 
-			result := artifactResult("url", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
-			result["note"] = "Artifact content was not returned inline. Use download_url to fetch it directly."
-			if downloadURL == "" {
-				result["note"] = "Artifact content was not returned inline, and no download URL was available."
-			}
+			result := urlArtifactResult("", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
 			return mcpTextResult(span, &result)
 		}, []string{"read_artifacts"}
 }
@@ -377,6 +401,19 @@ func downloadURLExpiresInSeconds(downloadURL string) int {
 	}
 
 	return seconds
+}
+
+// urlArtifactResult builds a non-inline result that points the caller at the
+// download URL. reason is appended after "not returned inline" to explain why
+// (e.g. " because it was larger than expected"); pass "" for no specific reason.
+func urlArtifactResult(reason string, artifact buildkite.Artifact, downloadURL, downloadURLAuth string, expiresInSeconds int) map[string]any {
+	result := artifactResult("url", artifact, downloadURL, downloadURLAuth, expiresInSeconds)
+	if downloadURL == "" {
+		result["note"] = fmt.Sprintf("Artifact content was not returned inline%s, and no download URL was available.", reason)
+	} else {
+		result["note"] = fmt.Sprintf("Artifact content was not returned inline%s. Use download_url to fetch it directly.", reason)
+	}
+	return result
 }
 
 func artifactResult(encoding string, artifact buildkite.Artifact, downloadURL, downloadURLAuth string, expiresInSeconds int) map[string]any {
