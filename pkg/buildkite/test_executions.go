@@ -51,15 +51,22 @@ func GetFailedTestExecutions() (mcp.Tool, mcp.ToolHandlerFor[GetFailedTestExecut
 			}
 
 			deps := DepsFromContext(ctx)
-			failedExecutions, _, err := deps.TestExecutionsClient.GetFailedExecutions(ctx, args.OrgSlug, args.TestSuiteSlug, args.RunID, options)
+			failedExecutions, resp, err := deps.TestExecutionsClient.GetFailedExecutions(ctx, args.OrgSlug, args.TestSuiteSlug, args.RunID, options)
 			if err != nil {
 				return handleBuildkiteError(err)
+			}
+
+			result := PaginatedResult[buildkite.FailedExecution]{
+				Items: failedExecutions,
+				Headers: map[string]string{
+					"Link": resp.Header.Get("Link"),
+				},
 			}
 
 			span.SetAttributes(
 				attribute.Int("item_count", len(failedExecutions)),
 			)
 
-			return mcpTextResult(span, &failedExecutions)
+			return mcpTextResult(span, &result)
 		}, []string{"read_suites"}
 }
