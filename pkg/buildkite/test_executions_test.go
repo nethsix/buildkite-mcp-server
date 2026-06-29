@@ -50,7 +50,7 @@ func TestGetFailedExecutions(t *testing.T) {
 
 	mockClient := &MockTestExecutionsClient{
 		GetFailedExecutionsFunc: func(ctx context.Context, org, slug, runID string, opt *buildkite.FailedExecutionsOptions) ([]buildkite.FailedExecution, *buildkite.Response, error) {
-			assert.Equal(true, opt.IncludeFailureExpanded)
+			assert.True(opt.IncludeFailureExpanded)
 			assert.Equal(0, opt.Page)
 			assert.Equal(0, opt.PerPage)
 
