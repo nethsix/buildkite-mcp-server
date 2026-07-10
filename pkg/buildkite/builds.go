@@ -300,7 +300,8 @@ func CreateBuild() (mcp.Tool, mcp.ToolHandlerFor[CreateBuildArgs, any], []string
 			Name:        "create_build",
 			Description: "Trigger a new build on a Buildkite pipeline for a specific commit and branch, with optional environment variables, metadata, and author information",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Create Build",
+				Title:           "Create Build",
+				DestructiveHint: boolPtr(false),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args CreateBuildArgs) (*mcp.CallToolResult, any, error) {
@@ -343,7 +344,8 @@ func CancelBuild() (mcp.Tool, mcp.ToolHandlerFor[CancelBuildArgs, any], []string
 			Name:        "cancel_build",
 			Description: "Cancel a running build on a Buildkite pipeline",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Cancel Build",
+				Title:           "Cancel Build",
+				DestructiveHint: boolPtr(true),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args CancelBuildArgs) (*mcp.CallToolResult, any, error) {
@@ -377,7 +379,8 @@ func RebuildBuild() (mcp.Tool, mcp.ToolHandlerFor[RebuildBuildArgs, any], []stri
 			Name:        "rebuild_build",
 			Description: "Rebuild/retry an entire build on a Buildkite pipeline",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Rebuild Build",
+				Title:           "Rebuild Build",
+				DestructiveHint: boolPtr(false),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args RebuildBuildArgs) (*mcp.CallToolResult, any, error) {

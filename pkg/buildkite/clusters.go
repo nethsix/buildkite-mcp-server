@@ -153,7 +153,7 @@ func UpdateCluster() (mcp.Tool, mcp.ToolHandlerFor[UpdateClusterArgs, any], []st
 			Description: "Update an existing cluster's name, description, emoji, color, or default queue",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Update Cluster",
-				DestructiveHint: boolPtr(false),
+				DestructiveHint: boolPtr(true),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args UpdateClusterArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.UpdateCluster")

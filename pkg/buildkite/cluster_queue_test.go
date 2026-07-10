@@ -191,7 +191,7 @@ func TestUpdateClusterQueue(t *testing.T) {
 
 	tool, handler, scopes := UpdateClusterQueue()
 	assert.Equal("update_cluster_queue", tool.Name)
-	assert.Equal(boolPtr(false), tool.Annotations.DestructiveHint)
+	assert.Equal(boolPtr(true), tool.Annotations.DestructiveHint)
 	assert.Contains(scopes, "write_clusters")
 
 	request := createMCPRequest(t, map[string]any{})

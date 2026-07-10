@@ -133,7 +133,8 @@ func CreateAnnotation() (mcp.Tool, mcp.ToolHandlerFor[CreateAnnotationArgs, any]
 			Name:        "create_annotation",
 			Description: "Create an annotation on a build or specific job. Use scope='build' (default) or scope='job' with job_id",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Create Annotation",
+				Title:           "Create Annotation",
+				DestructiveHint: boolPtr(false),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args CreateAnnotationArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.CreateAnnotation")

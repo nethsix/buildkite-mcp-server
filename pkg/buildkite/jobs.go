@@ -184,7 +184,8 @@ func UnblockJob() (mcp.Tool, mcp.ToolHandlerFor[UnblockJobArgs, any], []string) 
 			Name:        "unblock_job",
 			Description: "Unblock a blocked job in a Buildkite build to allow it to continue execution",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Unblock Job",
+				Title:           "Unblock Job",
+				DestructiveHint: boolPtr(false),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args UnblockJobArgs) (*mcp.CallToolResult, any, error) {
@@ -228,7 +229,8 @@ func RetryJob() (mcp.Tool, mcp.ToolHandlerFor[RetryJobArgs, any], []string) {
 			Name:        "retry_job",
 			Description: "Retry a specific failed or timed out job in a Buildkite build",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Retry Job",
+				Title:           "Retry Job",
+				DestructiveHint: boolPtr(false),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args RetryJobArgs) (*mcp.CallToolResult, any, error) {

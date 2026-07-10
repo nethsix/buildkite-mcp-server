@@ -168,7 +168,7 @@ func UpdateClusterQueue() (mcp.Tool, mcp.ToolHandlerFor[UpdateClusterQueueArgs, 
 			Description: "Update an existing cluster queue's description or retry agent affinity",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Update Cluster Queue",
-				DestructiveHint: boolPtr(false),
+				DestructiveHint: boolPtr(true),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args UpdateClusterQueueArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.UpdateClusterQueue")
