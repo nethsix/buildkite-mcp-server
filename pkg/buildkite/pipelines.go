@@ -256,7 +256,8 @@ func CreatePipeline() (mcp.Tool, mcp.ToolHandlerFor[CreatePipelineArgs, any], []
 			Name:        "create_pipeline",
 			Description: "Set up a new CI/CD pipeline in Buildkite with YAML configuration, repository connection, and cluster assignment",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Create Pipeline",
+				Title:           "Create Pipeline",
+				DestructiveHint: boolPtr(false),
 			},
 		},
 		func(ctx context.Context, request *mcp.CallToolRequest, args CreatePipelineArgs) (*mcp.CallToolResult, any, error) {
@@ -334,7 +335,8 @@ func UpdatePipeline() (mcp.Tool, mcp.ToolHandlerFor[UpdatePipelineArgs, any], []
 			Name:        "update_pipeline",
 			Description: "Modify an existing Buildkite pipeline's configuration, repository, settings, or metadata",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Update Pipeline",
+				Title:           "Update Pipeline",
+				DestructiveHint: boolPtr(true),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args UpdatePipelineArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.UpdatePipeline")

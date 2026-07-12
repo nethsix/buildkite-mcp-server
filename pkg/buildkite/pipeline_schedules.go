@@ -118,7 +118,8 @@ func CreatePipelineSchedule() (mcp.Tool, mcp.ToolHandlerFor[CreatePipelineSchedu
 			Name:        "create_pipeline_schedule",
 			Description: "Create a new pipeline schedule that triggers builds on a cron-driven interval",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Create Pipeline Schedule",
+				Title:           "Create Pipeline Schedule",
+				DestructiveHint: boolPtr(false),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args CreatePipelineScheduleArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.CreatePipelineSchedule")
@@ -168,7 +169,8 @@ func UpdatePipelineSchedule() (mcp.Tool, mcp.ToolHandlerFor[UpdatePipelineSchedu
 			Name:        "update_pipeline_schedule",
 			Description: "Modify an existing pipeline schedule's cron expression, branch, environment variables, or enabled state",
 			Annotations: &mcp.ToolAnnotations{
-				Title: "Update Pipeline Schedule",
+				Title:           "Update Pipeline Schedule",
+				DestructiveHint: boolPtr(true),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args UpdatePipelineScheduleArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.UpdatePipelineSchedule")
