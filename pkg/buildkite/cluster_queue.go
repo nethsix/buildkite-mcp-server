@@ -234,7 +234,7 @@ func ResumeClusterQueueDispatch() (mcp.Tool, mcp.ToolHandlerFor[ResumeClusterQue
 			Description: "Resume dispatch on a paused cluster queue, allowing jobs to be dispatched to agents again",
 			Annotations: &mcp.ToolAnnotations{
 				Title:           "Resume Cluster Queue Dispatch",
-				DestructiveHint: boolPtr(false),
+				DestructiveHint: boolPtr(true),
 			},
 		}, func(ctx context.Context, request *mcp.CallToolRequest, args ResumeClusterQueueDispatchArgs) (*mcp.CallToolResult, any, error) {
 			ctx, span := trace.Start(ctx, "buildkite.ResumeClusterQueueDispatch")
