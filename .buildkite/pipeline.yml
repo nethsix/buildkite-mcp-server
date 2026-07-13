@@ -48,7 +48,10 @@ steps:
       skip: "intentionally skipped to test broken/skipped state semantics"
 
     # Produces a job with state "finished" and exit_status != 0 (a real failure with logs).
+    # soft_fail keeps the failing command (and its logs) for state-semantics testing
+    # while allowing the overall build to pass green.
     - name: ":boom: failed job"
       command: |
         echo "About to fail on purpose..."
         exit 1
+      soft_fail: true
