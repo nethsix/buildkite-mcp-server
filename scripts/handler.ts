@@ -254,10 +254,12 @@ async function main() {
 
     console.log("Label detected, checking for failed builds...");
 
-    // BUG: This currently assumes the orgSlug and pipelineSlug use the same
-    // names as the GitHub org and repo, respectively, which often won't be the case.
-    const pipelineSlug = repoName.replace(".", "-dot-");
-    const orgSlug = repoOwner;
+    // The PR's failed build lives on the same Buildkite org/pipeline this handler
+    // is running in, so prefer the slugs Buildkite injects. The GitHub owner/repo
+    // are NOT reliable substitutes (e.g. GitHub owner "nethsix" vs Buildkite org
+    // "anothertest"), so only fall back to them when the env vars are absent.
+    const orgSlug = process.env.BUILDKITE_ORGANIZATION_SLUG ?? repoOwner;
+    const pipelineSlug = process.env.BUILDKITE_PIPELINE_SLUG ?? repoName.replace(".", "-dot-");
 
     // Create Octokit instance for GitHub API calls
     const octokit = createOctokit();
