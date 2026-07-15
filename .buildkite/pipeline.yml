@@ -47,6 +47,21 @@ steps:
         GOMODCACHE: /gomodcache
       plugins:
         - mise#v1.1.1: ~
+  - group: ":test_tube: State Semantics Test"
+    key: state-semantics-test
+    steps:
+    # Produces a job with state "broken" (Buildkite's term for a skipped step).
+    # It never runs and has NO logs — the exact case that confuses the MCP agent.
+    - name: ":ghost: broken (skipped) job"
+      command: echo "this never runs"
+      skip: "intentionally skipped to test broken/skipped state semantics"
+
+    # Produces a job with state "finished" and exit_status != 0 (a real failure with logs).
+    - name: ":boom: failed job"
+      command: |
+        echo "About to fail on purpose..."
+        exit 1
+
   - label: ":node: Generate the eval pipeline"
     command: |
 
