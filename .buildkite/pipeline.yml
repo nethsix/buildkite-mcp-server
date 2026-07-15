@@ -57,10 +57,13 @@ steps:
       skip: "intentionally skipped to test broken/skipped state semantics"
 
     # Produces a job with state "finished" and exit_status != 0 (a real failure with logs).
+    # soft_fail keeps the real non-zero exit + logs (the state semantics we want to test)
+    # without failing the overall build, so CI stays green.
     - name: ":boom: failed job"
       command: |
         echo "About to fail on purpose..."
         exit 1
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
