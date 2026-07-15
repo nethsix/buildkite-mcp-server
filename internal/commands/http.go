@@ -46,7 +46,12 @@ func (c *HTTPCmd) Run(ctx context.Context, globals *Globals) error {
 		BuildkiteLogsClient:     globals.BuildkiteLogsClient,
 	}
 
-	factory := server.NewPerRequestServerFactory(globals.Version, deps, c.EnabledToolsets, c.ReadOnly)
+	var disabledToolsets []string
+	if globals.HeaderPassthrough != nil {
+		disabledToolsets = []string{toolsets.ToolsetLogs}
+		log.Ctx(ctx).Warn().Msg("Disabling cached log tools while HTTP header passthrough is enabled")
+	}
+	factory := server.NewPerRequestServerFactory(globals.Version, deps, c.EnabledToolsets, c.ReadOnly, disabledToolsets...)
 
 	listener, err := net.Listen("tcp", c.Listen)
 	if err != nil {
