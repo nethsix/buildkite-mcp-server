@@ -38,6 +38,9 @@ steps:
       command: |
         echo "i'm fine..."
         exit 1
+      # Non-zero exit is expected here (state-semantics test). Soft-fail so the
+      # job still reports exit_status != 0 without failing the overall build.
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
