@@ -93,7 +93,43 @@ fi
 echo "*** SESSION_ID: $SESSION_ID"
 echo "*** TRANSCRIPT: $TRANSCRIPT"
 
+echo "*** Session Details ***"
+"$SCRIPT_DIR/bk-tool-audit-v2.sh" --all "$TRANSCRIPT"
 echo "*** Session Metrics ***"
 "$SCRIPT_DIR/bk-tool-audit-v2.sh" metrics "$TRANSCRIPT"
-echo "*** Session Details ***"
-"$SCRIPT_DIR/bk-tool-audit-v2.sh" "$TRANSCRIPT"
+
+# --- Review the eval session with the klaren prompt -------------------------
+# Best-effort, post-run analysis: a failure here must NOT fail the eval, which
+# has already completed. klaren.md requires the session log path, so append it
+# to the prompt. Use the harness copy of the prompt (alongside this script), not
+# the checked-out subject-under-test copy.
+echo "--- :female-detective: Reviewing the session (klaren)"
+KLAREN_LOG="/tmp/klaren-$DATETIME.log"
+KLAREN_PROMPT_FILE="$(mktemp)"
+{
+    cat "$SCRIPT_DIR/../prompts/klaren.md"
+    echo
+    echo "The LLM session log file to analyze is: $TRANSCRIPT"
+} > "$KLAREN_PROMPT_FILE"
+
+# klaren reads the transcript and inspects the repo; it needs read/search tools.
+KLAREN_TOOL_ARGS=(
+    --output-format stream-json --verbose
+    --allowedTools "Read" "Grep" "Glob" "Bash"
+)
+
+if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
+    if ! "$SCRIPT_DIR/claude.sh" "$KLAREN_PROMPT_FILE" "${KLAREN_TOOL_ARGS[@]}" | tee "$KLAREN_LOG"; then
+        echo "WARNING: klaren review failed" >&2
+    fi
+    buildkite-agent artifact upload "$KLAREN_LOG" || echo "WARNING: failed to upload klaren artifact" >&2
+else
+    if ! claude -p "$(cat "$KLAREN_PROMPT_FILE")" \
+        --mcp-config mcp.json \
+        "${KLAREN_TOOL_ARGS[@]}" \
+        | tee "$KLAREN_LOG"; then
+        echo "WARNING: klaren review failed" >&2
+    fi
+fi
+
+echo "*** KLAREN_LOG: $KLAREN_LOG"
