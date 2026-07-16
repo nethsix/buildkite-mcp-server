@@ -38,6 +38,9 @@ steps:
       command: |
         echo "i'm fine..."
         exit 1
+      # Soft-fail so the non-zero exit still exercises the state semantics
+      # (exit_status != 0) without failing the overall build.
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
