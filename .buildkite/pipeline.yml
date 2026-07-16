@@ -28,16 +28,15 @@ steps:
   - group: ":test_tube: State Semantics Test"
     key: state-semantics-test
     steps:
-    # Produces a job with state "broken" (Buildkite's term for a skipped step).
-    # It never runs and has NO logs — the exact case that confuses the MCP agent.
-    - name: ":ghost: broken (skipped) job"
-      command: echo "this never runs"
+    # Produces a job with state "broken"
+    - name: ":ghost: job #1"
+      command: echo "i'm broke!"
       skip: "intentionally skipped to test broken/skipped state semantics"
 
-    # Produces a job with state "finished" and exit_status != 0 (a real failure with logs).
-    - name: ":boom: failed job"
+    # Produces a job with state "finished" and exit_status != 0
+    - name: ":boom: job #2"
       command: |
-        echo "About to fail on purpose..."
+        echo "i'm fine..."
         exit 1
 
   - label: ":node: Generate the eval pipeline"
