@@ -38,6 +38,10 @@ steps:
       command: |
         echo "i'm fine..."
         exit 1
+      # Exit non-zero to exercise the "failed" job state, but don't fail the
+      # overall build -- soft_fail keeps the failed-state semantics while
+      # allowing the pipeline (and PR CI) to go green.
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
