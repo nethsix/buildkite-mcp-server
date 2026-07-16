@@ -38,6 +38,10 @@ steps:
       command: |
         echo "i'm fine..."
         exit 1
+      # Job still runs and exits non-zero (preserving the failed-state test),
+      # but the non-zero exit is treated as a soft failure so it does not turn
+      # the build red.
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
