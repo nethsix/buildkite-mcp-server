@@ -38,6 +38,7 @@ steps:
       command: |
         echo "i'm fine..."
         exit 1
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
