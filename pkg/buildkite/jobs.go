@@ -34,6 +34,8 @@ type ListJobsArgs struct {
 	PipelineSlug       string `json:"pipeline_slug"`
 	BuildNumber        string `json:"build_number"`
 	State              string `json:"state,omitempty" jsonschema:"Filter jobs by state. Comma-separated for multiple states (e.g.\\, 'passed\\,failed\\,running')"`
+	StepKey            string `json:"step_key,omitempty" jsonschema:"Filter jobs by step key. Includes all parallel jobs for the step"`
+	GroupKey           string `json:"group_key,omitempty" jsonschema:"Filter jobs by group key. Includes all jobs in the group"`
 	IncludeRetriedJobs *bool  `json:"include_retried_jobs,omitempty" jsonschema:"Include retried jobs in the response. Defaults to true on the server when omitted"`
 	PerPage            int    `json:"per_page,omitempty" jsonschema:"Results per page for cursor pagination (min 1\\, max 100\\, default 30)"`
 	After              string `json:"after,omitempty" jsonschema:"Cursor for the next page. Take this from the 'links.next' URL of a previous response. Mutually exclusive with 'before'"`
@@ -59,6 +61,8 @@ func ListJobs() (mcp.Tool, mcp.ToolHandlerFor[ListJobsArgs, any], []string) {
 				attribute.String("pipeline_slug", args.PipelineSlug),
 				attribute.String("build_number", args.BuildNumber),
 				attribute.String("state", args.State),
+				attribute.String("step_key", args.StepKey),
+				attribute.String("group_key", args.GroupKey),
 				attribute.Int("per_page", args.PerPage),
 			)
 
@@ -68,6 +72,8 @@ func ListJobs() (mcp.Tool, mcp.ToolHandlerFor[ListJobsArgs, any], []string) {
 
 			options := &buildkite.JobsListOptions{
 				IncludeRetriedJobs: args.IncludeRetriedJobs,
+				StepKey:            args.StepKey,
+				GroupKey:           args.GroupKey,
 				PerPage:            args.PerPage,
 				After:              args.After,
 				Before:             args.Before,

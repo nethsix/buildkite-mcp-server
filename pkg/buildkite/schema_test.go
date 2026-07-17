@@ -230,6 +230,19 @@ func TestListPipelinesArgsSchema(t *testing.T) {
 	}
 }
 
+func TestListJobsArgsSchema(t *testing.T) {
+	s := schemaFor[ListJobsArgs](t)
+	require.Equal(t, []string{"build_number", "org_slug", "pipeline_slug"}, sortedRequired[ListJobsArgs](t))
+
+	for _, opt := range []string{"step_key", "group_key"} {
+		require.Contains(t, s.Properties, opt)
+		require.NotContains(t, s.Required, opt, "%s should be optional", opt)
+	}
+
+	require.Equal(t, "Filter jobs by step key. Includes all parallel jobs for the step", s.Properties["step_key"].Description)
+	require.Equal(t, "Filter jobs by group key. Includes all jobs in the group", s.Properties["group_key"].Description)
+}
+
 func TestUnblockJobArgsSchema(t *testing.T) {
 	s := schemaFor[UnblockJobArgs](t)
 	req := slices.Clone(s.Required)

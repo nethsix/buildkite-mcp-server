@@ -344,6 +344,8 @@ func TestListJobs(t *testing.T) {
 			PipelineSlug:       "test-pipeline",
 			BuildNumber:        "123",
 			State:              "passed, failed",
+			StepKey:            "test-step",
+			GroupKey:           "test-group",
 			IncludeRetriedJobs: boolPtr(false),
 			PerPage:            50,
 			After:              "cursor1",
@@ -357,6 +359,8 @@ func TestListJobs(t *testing.T) {
 
 		require.NotNil(t, captured)
 		assert.Equal(t, []string{"passed", "failed"}, captured.State)
+		assert.Equal(t, "test-step", captured.StepKey)
+		assert.Equal(t, "test-group", captured.GroupKey)
 		require.NotNil(t, captured.IncludeRetriedJobs)
 		assert.False(t, *captured.IncludeRetriedJobs)
 		assert.Equal(t, 50, captured.PerPage)
