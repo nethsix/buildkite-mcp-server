@@ -76,6 +76,10 @@ func testJobAgent() buildkite.Agent {
 	}
 }
 
+func intPtr(value int) *int {
+	return &value
+}
+
 func TestUnblockJob(t *testing.T) {
 	// Test tool definition
 	t.Run("ToolDefinition", func(t *testing.T) {
@@ -330,7 +334,7 @@ func TestListJobs(t *testing.T) {
 				assert.Equal(t, "test-pipeline", pipeline)
 				assert.Equal(t, "123", buildNumber)
 				return buildkite.JobsList{
-					Items: []buildkite.Job{{ID: "job-1", State: "passed"}},
+					Items: []buildkite.Job{{ID: "job-1", Name: "test", State: "passed", Command: "go test ./...", ExitStatus: intPtr(0)}},
 					Links: buildkite.JobsListLinks{Next: "https://api.buildkite.com/v2/...?after=cursor2"},
 				}, &buildkite.Response{Response: &http.Response{StatusCode: 200}}, nil
 			},
@@ -354,7 +358,9 @@ func TestListJobs(t *testing.T) {
 
 		text := getTextResult(t, result).Text
 		assert.Contains(t, text, `"items":[`)
-		assert.Contains(t, text, `"id":"job-1"`)
+		assert.Contains(t, text, `"name":"test"`)
+		assert.Contains(t, text, `"command":"go test ./..."`)
+		assert.NotContains(t, text, `"id":"job-1"`)
 		assert.Contains(t, text, `"next":"https://api.buildkite.com`)
 
 		require.NotNil(t, captured)
@@ -365,6 +371,65 @@ func TestListJobs(t *testing.T) {
 		assert.False(t, *captured.IncludeRetriedJobs)
 		assert.Equal(t, 50, captured.PerPage)
 		assert.Equal(t, "cursor1", captured.After)
+	})
+
+	t.Run("SummaryContainsOnlyDiagnosticFields", func(t *testing.T) {
+		mockJobs := &MockJobsClient{
+			ListByBuildFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error) {
+				return buildkite.JobsList{Items: []buildkite.Job{{
+					ID:              "job-1",
+					Name:            "test",
+					State:           "failed",
+					Command:         "go test ./...",
+					ExitStatus:      intPtr(1),
+					BuildURL:        "https://api.buildkite.com/v2/builds/123",
+					ClusterID:       "cluster-1",
+					ClusterQueueURL: "https://api.buildkite.com/v2/queues/queue-1",
+				}}}, &buildkite.Response{}, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := ListJobs()
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug: "test-org", PipelineSlug: "test-pipeline", BuildNumber: "123",
+		})
+		require.NoError(t, err)
+
+		var response struct {
+			Items []map[string]any `json:"items"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(getTextResult(t, result).Text), &response))
+		require.Len(t, response.Items, 1)
+		assert.Equal(t, map[string]any{
+			"name": "test", "state": "failed", "command": "go test ./...", "exit_status": float64(1),
+		}, response.Items[0])
+	})
+
+	t.Run("DetailedExcludesRepeatedInfrastructureFields", func(t *testing.T) {
+		mockJobs := &MockJobsClient{
+			ListByBuildFunc: func(ctx context.Context, org string, pipeline string, buildNumber string, opt *buildkite.JobsListOptions) (buildkite.JobsList, *buildkite.Response, error) {
+				return buildkite.JobsList{Items: []buildkite.Job{{
+					ID: "job-1", Name: "test", State: "failed", Command: "go test ./...",
+					BuildURL: "https://api.buildkite.com/v2/builds/123", ClusterID: "cluster-1",
+					ClusterQueueURL: "https://api.buildkite.com/v2/queues/queue-1", AgentQueryRules: []string{"queue=test"},
+				}}}, &buildkite.Response{}, nil
+			},
+		}
+
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: mockJobs})
+		_, handler, _ := ListJobs()
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug: "test-org", PipelineSlug: "test-pipeline", BuildNumber: "123", DetailLevel: "detailed",
+		})
+		require.NoError(t, err)
+
+		text := getTextResult(t, result).Text
+		assert.Contains(t, text, `"id":"job-1"`)
+		assert.NotContains(t, text, "build_url")
+		assert.NotContains(t, text, "cluster_id")
+		assert.NotContains(t, text, "cluster_queue_url")
+		assert.NotContains(t, text, "agent_query_rules")
 	})
 
 	t.Run("RedactsUnusedJobFields", func(t *testing.T) {
@@ -392,6 +457,7 @@ func TestListJobs(t *testing.T) {
 			OrgSlug:      "test-org",
 			PipelineSlug: "test-pipeline",
 			BuildNumber:  "123",
+			DetailLevel:  "full",
 		})
 		require.NoError(t, err)
 
@@ -428,6 +494,7 @@ func TestListJobs(t *testing.T) {
 			OrgSlug:      "test-org",
 			PipelineSlug: "test-pipeline",
 			BuildNumber:  "123",
+			DetailLevel:  "full",
 		})
 		require.NoError(t, err)
 
@@ -460,6 +527,7 @@ func TestListJobs(t *testing.T) {
 			OrgSlug:      "test-org",
 			PipelineSlug: "test-pipeline",
 			BuildNumber:  "123",
+			DetailLevel:  "full",
 			IncludeAgent: true,
 		})
 		require.NoError(t, err)
@@ -468,6 +536,17 @@ func TestListJobs(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(getTextResult(t, result).Text), &jobs))
 		require.Len(t, jobs.Items, 1)
 		assert.Equal(t, testJobAgent(), jobs.Items[0].Agent)
+	})
+
+	t.Run("InvalidDetailLevel", func(t *testing.T) {
+		ctx := ContextWithDeps(context.Background(), ToolDependencies{JobsClient: &MockJobsClient{}})
+		_, handler, _ := ListJobs()
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), ListJobsArgs{
+			OrgSlug: "test-org", PipelineSlug: "test-pipeline", BuildNumber: "123", DetailLevel: "verbose",
+		})
+		require.NoError(t, err)
+		assert.Contains(t, getTextResult(t, result).Text, "detail_level must be 'summary', 'detailed', or 'full'")
 	})
 
 	t.Run("AfterAndBeforeMutuallyExclusive", func(t *testing.T) {

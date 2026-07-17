@@ -230,7 +230,7 @@ func TestListPipelinesArgsSchema(t *testing.T) {
 	}
 }
 
-func TestListJobsArgsSchema(t *testing.T) {
+func TestListJobsArgsSchemaFilters(t *testing.T) {
 	s := schemaFor[ListJobsArgs](t)
 	require.Equal(t, []string{"build_number", "org_slug", "pipeline_slug"}, sortedRequired[ListJobsArgs](t))
 
@@ -250,6 +250,17 @@ func TestUnblockJobArgsSchema(t *testing.T) {
 	require.Equal(t, []string{"build_number", "job_id", "org_slug", "pipeline_slug"}, req)
 
 	for _, opt := range []string{"fields"} {
+		require.NotContains(t, s.Required, opt, "%s should be optional", opt)
+	}
+}
+
+func TestListJobsArgsSchemaOptionalFields(t *testing.T) {
+	s := schemaFor[ListJobsArgs](t)
+	req := slices.Clone(s.Required)
+	slices.Sort(req)
+	require.Equal(t, []string{"build_number", "org_slug", "pipeline_slug"}, req)
+
+	for _, opt := range []string{"state", "detail_level", "include_retried_jobs", "per_page", "after", "before", "include_agent"} {
 		require.NotContains(t, s.Required, opt, "%s should be optional", opt)
 	}
 }
