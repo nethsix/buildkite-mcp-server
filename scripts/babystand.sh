@@ -60,12 +60,16 @@ echo "***"
 
 LOG="/tmp/babystand-$DATETIME.log"
 
+# Format a duration in whole seconds as "Nm Ns".
+fmt_elapsed() { printf '%dm %ds' $(($1 / 60)) $(($1 % 60)); }
+
 # Claude args shared by both execution modes.
 CLAUDE_TOOL_ARGS=(
     --output-format stream-json --verbose
     --allowedTools "Edit" "Bash(go:*)" "Bash(make:*)" "Bash(git:*)" "mcp__bk_bkbk_ro"
 )
 
+EVAL_START=$(date +%s)
 if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
     # Sandboxed CI execution: run inside the container via claude.sh, which owns
     # the mcp_in_ci.json config, appends the system prompt, and pipes through the
@@ -90,9 +94,22 @@ else
     SESSION_ID=$(jq -r 'select(.type == "system" and .subtype == "init") | .session_id' "$LOG" | head -n1)
     TRANSCRIPT=~/.claude/projects/$(pwd | sed -e 's/[\/.]/-/g')/$SESSION_ID.jsonl
 fi
+EVAL_ELAPSED=$(fmt_elapsed $(( $(date +%s) - EVAL_START )))
+echo "*** EVAL ELAPSED (red-to-green): $EVAL_ELAPSED"
 
 echo "*** SESSION_ID: $SESSION_ID"
 echo "*** TRANSCRIPT: $TRANSCRIPT"
+
+# Upload the eval session log (transcript) as a build artifact. Best-effort and
+# CI-only (buildkite-agent is unavailable locally); never fail the build.
+if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
+    if [[ -s "$TRANSCRIPT" ]]; then
+        buildkite-agent artifact upload "$TRANSCRIPT" \
+            || echo "WARNING: failed to upload session transcript artifact" >&2
+    else
+        echo "WARNING: session transcript not found or empty: $TRANSCRIPT" >&2
+    fi
+fi
 
 AUDIT_TOOLS_FILE="$(mktemp)"
 AUDIT_METRICS_FILE="$(mktemp)"
@@ -122,6 +139,7 @@ KLAREN_TOOL_ARGS=(
 )
 
 KLAREN_RESULT_FILE=""
+KLAREN_START=$(date +%s)
 if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
     if ! "$SCRIPT_DIR/claude.sh" "$KLAREN_PROMPT_FILE" "${KLAREN_TOOL_ARGS[@]}" | tee "$KLAREN_LOG"; then
         echo "WARNING: klaren review failed" >&2
@@ -136,6 +154,8 @@ else
         echo "WARNING: klaren review failed" >&2
     fi
 fi
+KLAREN_ELAPSED=$(fmt_elapsed $(( $(date +%s) - KLAREN_START )))
+echo "*** KLAREN ELAPSED: $KLAREN_ELAPSED"
 
 echo "*** KLAREN_LOG: $KLAREN_LOG"
 
@@ -145,15 +165,19 @@ echo "*** KLAREN_LOG: $KLAREN_LOG"
 # of the build (priority 10 > the parser's 5). CI-only: buildkite-agent annotate
 # is unavailable locally. All best-effort; never fail the build.
 if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
-    # annotate_markdown <context> <title> <file> [style]  -- content is already markdown
+    # annotate_markdown <context> <title> <file> <meta> [style]
+    # content is already markdown; <meta> (e.g. elapsed time) is shown at the top.
     annotate_markdown() {
-        local context="$1" title="$2" file="$3" style="${4:-info}"
-        if [[ ! -s "$file" ]]; then
-            echo "WARNING: nothing to annotate for '$context'" >&2
-            return 0
-        fi
-        { printf '### %s\n\n' "$title"; cat "$file"; } \
-            | buildkite-agent annotate --context "$context" --style "$style" --priority 10 \
+        local context="$1" title="$2" file="$3" meta="$4" style="${5:-info}"
+        {
+            printf '### %s\n\n' "$title"
+            [[ -n "$meta" ]] && printf '%s\n\n' "$meta"
+            if [[ -s "$file" ]]; then
+                cat "$file"
+            else
+                printf '_(no final output captured)_\n'
+            fi
+        } | buildkite-agent annotate --context "$context" --style "$style" --priority 10 \
             || echo "WARNING: failed to annotate '$context'" >&2
     }
 
@@ -169,8 +193,8 @@ if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
             || echo "WARNING: failed to annotate '$context'" >&2
     }
 
-    annotate_markdown "eval-final"    ":robot_face: Eval — final output"      "${EVAL_RESULT_FILE:-}" "success"
+    annotate_markdown "eval-final"    ":robot_face: Eval — final output"      "${EVAL_RESULT_FILE:-}" "⏱️ Red-to-green elapsed: ${EVAL_ELAPSED}" "success"
     annotate_codeblock "eval-metrics" ":bar_chart: Eval — session metrics"    "$AUDIT_METRICS_FILE"
     annotate_codeblock "eval-tools"   ":hammer_and_wrench: Eval — tool calls" "$AUDIT_TOOLS_FILE"
-    annotate_markdown "klaren-final"  ":female-detective: Klaren — session review" "${KLAREN_RESULT_FILE:-}"
+    annotate_markdown "klaren-final"  ":female-detective: Klaren — session review" "${KLAREN_RESULT_FILE:-}" "⏱️ Klaren elapsed: ${KLAREN_ELAPSED}"
 fi
