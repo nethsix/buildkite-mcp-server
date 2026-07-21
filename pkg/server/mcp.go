@@ -68,6 +68,8 @@ Start here: Before using most tools, call user_token_organization to retrieve th
 
 Authorization: Tools available depend on the scopes granted to the configured API token. A 401 response from a tool means the token lacks the required scope for that operation.
 
+For task-specific guidance beyond these pitfalls, call list_skills to see available guides, then load_skill to read one.
+
 Common pitfalls:
 
 build_number is a sequential integer string (e.g. "42"), not a UUID. Build, job, artifact, and log tools all require this identifier — do not use the build's UUID id field.
