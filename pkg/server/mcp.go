@@ -68,6 +68,8 @@ Start here: Before using most tools, call user_token_organization to retrieve th
 
 Authorization: Tools available depend on the scopes granted to the configured API token. A 401 response from a tool means the token lacks the required scope for that operation.
 
+For task-specific guidance beyond these pitfalls, call list_skills to see available guides, then load_skill to read one.
+
 Common pitfalls:
 
 build_number is a sequential integer string (e.g. "42"), not a UUID. Build, job, artifact, and log tools all require this identifier — do not use the build's UUID id field.
@@ -75,8 +77,6 @@ build_number is a sequential integer string (e.g. "42"), not a UUID. Build, job,
 Job state "broken" means the job did not run because something inside the build prevented execution: an if conditional evaluated to false, a branch filter did not match, or an upstream dependency failed. It does not mean the job's command failed. Distinguish: broken = build configuration or dependencies prevented execution; failed = job ran but exited non-zero; skipped = external factor (e.g. a newer build superseded it). When both failed and broken jobs are present, investigate failed upstream jobs first.
 
 Log investigation order: start with tail_logs to see recent output (cheapest, catches most failures), then search_logs with a pattern and limit for targeted investigation, and only use read_logs with seek and limit for deep sequential inspection. Avoid calling read_logs without a limit on large logs.
-
-Before debugging logs or investigating build failures, call list_skills to discover usage guides, then load_skill to read one.
 
 Annotation scope: when creating an annotation with scope "job", job_id is required. If job_id is provided but scope is left as the default "build", the job_id is silently ignored.`
 
