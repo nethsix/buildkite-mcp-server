@@ -40,7 +40,7 @@
     {
       "description": "Group Buildkite dependencies",
       "matchSourceUrls": ["https://github.com/buildkite/**"],
-      "groupName": "buildkite"
+      "groupName": "buildkite-dependencies"
     },
     {
       "description": "Group testing dependencies",
