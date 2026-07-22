@@ -24,10 +24,11 @@ func TestBuildkiteServerInstructions(t *testing.T) {
 	always := []string{authorization, buildNumber}
 
 	tests := []struct {
-		name    string
-		enabled []string
-		want    []string
-		notWant []string
+		name     string
+		enabled  []string
+		readOnly bool
+		want     []string
+		notWant  []string
 	}{
 		{
 			name:    "all toolsets includes every section",
@@ -52,12 +53,26 @@ func TestBuildkiteServerInstructions(t *testing.T) {
 			want:    append(append([]string{}, always...), startHere),
 			notWant: []string{skillDiscovery, jobStateBroken, logInvestigation, annotationScope},
 		},
+		{
+			name:     "all toolsets, read-only, omits annotation scope",
+			enabled:  []string{"all"},
+			readOnly: true,
+			want:     append(append([]string{}, always...), startHere, skillDiscovery, jobStateBroken, logInvestigation),
+			notWant:  []string{annotationScope},
+		},
+		{
+			name:     "annotations toolset, read-only, omits annotation scope",
+			enabled:  []string{"annotations"},
+			readOnly: true,
+			want:     append([]string{}, always...),
+			notWant:  []string{annotationScope},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
-			got := BuildkiteServerInstructions(tt.enabled)
+			got := BuildkiteServerInstructions(tt.enabled, tt.readOnly)
 
 			for _, w := range tt.want {
 				assert.Contains(got, w)

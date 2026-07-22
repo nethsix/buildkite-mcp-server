@@ -65,9 +65,12 @@ func unauthorizedMiddleware(cb func()) mcp.Middleware {
 
 // instructionSection is one paragraph of the server instructions, optionally
 // gated on a toolset being enabled. An empty toolset means always included.
+// writeOnly marks a paragraph that describes a write-only operation, excluded
+// whenever read-only mode is active regardless of toolset.
 type instructionSection struct {
-	toolset string
-	text    string
+	toolset   string
+	writeOnly bool
+	text      string
 }
 
 var instructionSections = []instructionSection{
@@ -91,19 +94,23 @@ var instructionSections = []instructionSection{
 		text:    "Log investigation order: start with tail_logs to see recent output (cheapest, catches most failures), then search_logs with a pattern and limit for targeted investigation, and only use read_logs with seek and limit for deep sequential inspection. Avoid calling read_logs without a limit on large logs.",
 	},
 	{
-		toolset: toolsets.ToolsetAnnotations,
-		text:    "Annotation scope: when creating an annotation with scope \"job\", job_id is required. If job_id is provided but scope is left as the default \"build\", the job_id is silently ignored.",
+		toolset:   toolsets.ToolsetAnnotations,
+		writeOnly: true,
+		text:      "Annotation scope: when creating an annotation with scope \"job\", job_id is required. If job_id is provided but scope is left as the default \"build\", the job_id is silently ignored.",
 	},
 }
 
 // BuildkiteServerInstructions builds the instructions sent to MCP clients
 // describing how to use this server's tools, including only the paragraphs
-// relevant to enabledToolsets. Exported so other services embedding or
-// re-implementing Buildkite MCP tools (e.g. custom/internal MCP servers) can
-// reuse the same guidance instead of maintaining their own copy.
-func BuildkiteServerInstructions(enabledToolsets []string) string {
+// relevant to enabledToolsets and readOnly mode. Exported so other services
+// embedding or re-implementing Buildkite MCP tools (e.g. custom/internal MCP
+// servers) can reuse the same guidance instead of maintaining their own copy.
+func BuildkiteServerInstructions(enabledToolsets []string, readOnly bool) string {
 	parts := make([]string, 0, len(instructionSections))
 	for _, s := range instructionSections {
+		if s.writeOnly && readOnly {
+			continue
+		}
 		if s.toolset == "" || toolsets.IsToolsetEnabled(enabledToolsets, s.toolset) {
 			parts = append(parts, s.text)
 		}
@@ -126,7 +133,7 @@ func NewMCPServer(version string, deps buildkite.ToolDependencies, opts ...Tools
 		Name:    "buildkite-mcp-server",
 		Version: version,
 	}, &mcp.ServerOptions{
-		Instructions: BuildkiteServerInstructions(cfg.EnabledToolsets),
+		Instructions: BuildkiteServerInstructions(cfg.EnabledToolsets, cfg.ReadOnly),
 	})
 
 	log.Info().Str("version", version).Msg("Starting Buildkite MCP server")
