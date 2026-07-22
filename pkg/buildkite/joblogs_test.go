@@ -2,11 +2,14 @@ package buildkite
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	buildkitelogs "github.com/buildkite/buildkite-logs"
+	"github.com/buildkite/buildkite-logs/logparser"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
@@ -160,6 +163,97 @@ func TestSearchLogsHandler(t *testing.T) {
 		textContent := result.Content[0].(*mcp.TextContent)
 		assert.Contains(textContent.Text, "failed to create log reader")
 	})
+}
+
+// writeTestParquetFile creates a parquet log file with the given entries, in
+// row order, for use in tests that exercise real search/read behavior.
+func writeTestParquetFile(t *testing.T, filename string, contents []string) {
+	t.Helper()
+
+	f, err := os.Create(filename)
+	require.NoError(t, err)
+	defer f.Close()
+
+	writer, err := buildkitelogs.NewParquetWriter(f)
+	require.NoError(t, err)
+	defer writer.Close()
+
+	baseTime := time.Date(2025, 4, 22, 21, 43, 29, 0, time.UTC)
+	entries := make([]*logparser.Entry, len(contents))
+	for i, content := range contents {
+		entries[i] = &logparser.Entry{
+			Timestamp: baseTime.Add(time.Duration(i) * 100 * time.Millisecond),
+			Content:   content,
+			RawLine:   []byte(content),
+		}
+	}
+
+	require.NoError(t, writer.WriteBatch(entries))
+}
+
+// TestSearchLogsHandler_SeekStart is a regression test for the seek_start
+// parameter being silently dropped: SearchLogsParams.SeekStart was accepted
+// by the tool schema but never copied into buildkitelogs.SearchOptions, so
+// every search behaved as if seek_start had been omitted.
+func TestSearchLogsHandler_SeekStart(t *testing.T) {
+	assert := require.New(t)
+
+	testFile := t.TempDir() + "/seek_start.parquet"
+	writeTestParquetFile(t, testFile, []string{
+		"setup phase started",          // row 0
+		"installing dependencies",      // row 1
+		"test phase started",           // row 2
+		"running unit tests",           // row 3
+		"test failed: assertion error", // row 4
+		"cleanup phase started",        // row 5
+	})
+
+	mockClient := &MockBuildkiteLogsClient{
+		NewReaderFunc: func(ctx context.Context, org, pipeline, build, job string, ttl time.Duration, forceRefresh bool) (*buildkitelogs.ParquetReader, error) {
+			return buildkitelogs.NewParquetReader(testFile), nil
+		},
+	}
+
+	ctx := ContextWithDeps(context.Background(), ToolDependencies{BuildkiteLogsClient: mockClient})
+	_, handler, _ := SearchLogs()
+
+	baseParams := JobLogsBaseParams{
+		OrgSlug:      "test-org",
+		PipelineSlug: "test-pipeline",
+		BuildNumber:  "123",
+		JobID:        "job-456",
+	}
+
+	search := func(seekStart int) []SearchResult {
+		params := SearchLogsParams{
+			JobLogsBaseParams: baseParams,
+			Pattern:           "test.*",
+			Reverse:           true,
+			SeekStart:         seekStart,
+		}
+
+		result, _, err := handler(ctx, createMCPRequest(t, map[string]any{}), params)
+		assert.NoError(err)
+
+		textContent := result.Content[0].(*mcp.TextContent)
+		var resp struct {
+			Results []SearchResult `json:"results"`
+		}
+		assert.NoError(json.Unmarshal([]byte(textContent.Text), &resp))
+		return resp.Results
+	}
+
+	// Without seek_start, a reverse search matches all three "test.*" rows.
+	all := search(0)
+	assert.Len(all, 3)
+	assert.Equal(int64(4), all[0].Match.RowNumber)
+
+	// With seek_start: 3, the search should start at row 3 and go backwards,
+	// so the match at row 4 (after the seek point) must be excluded.
+	seeked := search(3)
+	assert.Len(seeked, 2)
+	assert.Equal(int64(3), seeked[0].Match.RowNumber)
+	assert.Equal(int64(2), seeked[1].Match.RowNumber)
 }
 
 func TestTailLogsHandler(t *testing.T) {
