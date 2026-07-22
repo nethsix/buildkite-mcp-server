@@ -170,6 +170,7 @@ func SearchLogs() (mcp.Tool, mcp.ToolHandlerFor[SearchLogsParams, any], []string
 				Context:       params.Context,
 				BeforeContext: params.BeforeContext,
 				AfterContext:  params.AfterContext,
+				SeekStart:     int64(params.SeekStart),
 			}
 
 			var results []SearchResult
