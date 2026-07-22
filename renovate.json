@@ -24,7 +24,7 @@
     {
       "description": "Group Buildkite pipeline config",
       "matchFileNames": [".buildkite/**"],
-      "groupName": "buildkite"
+      "groupName": "buildkite-pipelines"
     },
     {
       "description": "Group Go minor and patch updates",
