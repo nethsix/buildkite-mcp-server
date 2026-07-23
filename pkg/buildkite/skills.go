@@ -29,6 +29,17 @@ type skillSummary struct {
 	Description string `json:"description"`
 }
 
+// matchesAllTokens reports whether every token is a substring of haystack.
+// An empty token list matches everything.
+func matchesAllTokens(haystack string, tokens []string) bool {
+	for _, t := range tokens {
+		if !strings.Contains(haystack, t) {
+			return false
+		}
+	}
+	return true
+}
+
 type ListSkillsArgs struct {
 	Query string `json:"query,omitempty" jsonschema:"Optional case-insensitive filter over skill name and description"`
 }
@@ -46,9 +57,10 @@ func ListSkills() (mcp.Tool, mcp.ToolHandlerFor[ListSkillsArgs, any], []string) 
 			defer span.End()
 
 			results := []skillSummary{}
-			query := strings.ToLower(args.Query)
+			tokens := strings.Fields(strings.ToLower(args.Query))
 			for _, s := range skillRegistry {
-				if query == "" || strings.Contains(strings.ToLower(s.Name), query) || strings.Contains(strings.ToLower(s.Description), query) {
+				haystack := strings.ToLower(s.Name + " " + s.Description)
+				if matchesAllTokens(haystack, tokens) {
 					results = append(results, skillSummary{Name: s.Name, Description: s.Description})
 				}
 			}
