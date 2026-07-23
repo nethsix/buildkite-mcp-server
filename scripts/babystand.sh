@@ -211,3 +211,13 @@ if [[ "${RUN_IN_CI:-false}" == "true" ]]; then
     annotate_codeblock "eval-tools"   ":hammer_and_wrench: Eval — tool calls" "$AUDIT_TOOLS_FILE"
     annotate_markdown "klaren-final"  ":female-detective: Klaren — session review" "${KLAREN_RESULT_FILE:-}" "⏱️ Klaren elapsed: ${KLAREN_ELAPSED}"
 fi
+
+# --- Compare against last passing main build (best-effort) ------------------
+# Diffs this build's eval summary, metrics, and klaren report against the last
+# passing `main` build, and publishes an `eval-compare` annotation. Best-effort:
+# never fails the eval, which has already completed.
+EVAL_RESULT_FILE="${EVAL_RESULT_FILE:-}" \
+AUDIT_METRICS_FILE="$AUDIT_METRICS_FILE" \
+AUDIT_TOOLS_FILE="$AUDIT_TOOLS_FILE" \
+KLAREN_RESULT_FILE="${KLAREN_RESULT_FILE:-}" \
+  "$SCRIPT_DIR/bk-eval-compare.sh" || echo "WARNING: eval comparison failed" >&2
