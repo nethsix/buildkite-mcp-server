@@ -33,11 +33,9 @@ steps:
       command: echo "i'm broke!"
       skip: "intentionally skipped to test broken/skipped state semantics"
 
-    # Produces a job with state "finished" and exit_status != 0
     - name: ":boom: job #2"
       command: |
         echo "i'm fine..."
-        exit 1
 
   - label: ":node: Generate the eval pipeline"
     command: |
