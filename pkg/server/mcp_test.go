@@ -10,6 +10,80 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBuildkiteServerInstructions(t *testing.T) {
+	const (
+		startHere        = "Start here:"
+		skillDiscovery   = "Skill discovery:"
+		authorization    = "Authorization:"
+		buildNumber      = "build_number is a sequential"
+		jobStateBroken   = `Job state "broken"`
+		logInvestigation = "Log investigation order:"
+		annotationScope  = "Annotation scope:"
+	)
+
+	always := []string{authorization, buildNumber}
+
+	tests := []struct {
+		name     string
+		enabled  []string
+		readOnly bool
+		want     []string
+		notWant  []string
+	}{
+		{
+			name:    "all toolsets includes every section",
+			enabled: []string{"all"},
+			want:    append(append([]string{}, always...), startHere, skillDiscovery, jobStateBroken, logInvestigation, annotationScope),
+		},
+		{
+			name:    "builds alone",
+			enabled: []string{"builds"},
+			want:    append(append([]string{}, always...), jobStateBroken),
+			notWant: []string{startHere, skillDiscovery, logInvestigation, annotationScope},
+		},
+		{
+			name:    "skills alone",
+			enabled: []string{"skills"},
+			want:    append(append([]string{}, always...), skillDiscovery),
+			notWant: []string{startHere, jobStateBroken, logInvestigation, annotationScope},
+		},
+		{
+			name:    "user alone",
+			enabled: []string{"user"},
+			want:    append(append([]string{}, always...), startHere),
+			notWant: []string{skillDiscovery, jobStateBroken, logInvestigation, annotationScope},
+		},
+		{
+			name:     "all toolsets, read-only, omits annotation scope",
+			enabled:  []string{"all"},
+			readOnly: true,
+			want:     append(append([]string{}, always...), startHere, skillDiscovery, jobStateBroken, logInvestigation),
+			notWant:  []string{annotationScope},
+		},
+		{
+			name:     "annotations toolset, read-only, omits annotation scope",
+			enabled:  []string{"annotations"},
+			readOnly: true,
+			want:     append([]string{}, always...),
+			notWant:  []string{annotationScope},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+			got := BuildkiteServerInstructions(tt.enabled, tt.readOnly)
+
+			for _, w := range tt.want {
+				assert.Contains(got, w)
+			}
+			for _, nw := range tt.notWant {
+				assert.NotContains(got, nw)
+			}
+		})
+	}
+}
+
 func TestUnauthorizedMiddleware_CallsCallbackOnUnauthorized(t *testing.T) {
 	called := false
 	middleware := unauthorizedMiddleware(func() { called = true })

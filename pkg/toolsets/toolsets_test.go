@@ -584,6 +584,7 @@ func TestIsValidToolset(t *testing.T) {
 		{"valid toolset - tests", "tests", true},
 		{"valid toolset - annotations", "annotations", true},
 		{"valid toolset - user", "user", true},
+		{"valid toolset - skills", "skills", true},
 		{"invalid toolset", "invalid", false},
 		{"empty string", "", false},
 	}
@@ -592,6 +593,30 @@ func TestIsValidToolset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assert := require.New(t)
 			result := IsValidToolset(tt.toolset)
+			assert.Equal(tt.expected, result)
+		})
+	}
+}
+
+func TestIsToolsetEnabled(t *testing.T) {
+	tests := []struct {
+		name     string
+		enabled  []string
+		toolset  string
+		expected bool
+	}{
+		{"all enables any toolset", []string{"all"}, "skills", true},
+		{"all enables an unrelated toolset", []string{"all"}, "logs", true},
+		{"exact match", []string{"builds"}, "builds", true},
+		{"not in list", []string{"builds"}, "logs", false},
+		{"present among several", []string{"builds", "logs", "annotations"}, "logs", true},
+		{"empty enabled list", []string{}, "builds", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert := require.New(t)
+			result := IsToolsetEnabled(tt.enabled, tt.toolset)
 			assert.Equal(tt.expected, result)
 		})
 	}
@@ -629,7 +654,7 @@ func TestCreateBuiltinToolsets(t *testing.T) {
 	registry.RegisterToolsets(builtin)
 
 	// Check that expected toolsets are registered
-	expectedToolsets := []string{"clusters", "agents", "pipelines", "builds", "artifacts", "logs", "tests", "annotations", "user"}
+	expectedToolsets := []string{"clusters", "agents", "pipelines", "builds", "artifacts", "logs", "tests", "annotations", "user", "skills"}
 	for _, name := range expectedToolsets {
 		_, exists := registry.Get(name)
 		assert.True(exists, "expected toolset %s to be registered", name)
