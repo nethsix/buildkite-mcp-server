@@ -13,6 +13,12 @@ vendor/
 /junit.xml
 /specs
 
+# node dependencies for the pipeline toolchain (scripts/*.ts)
+node_modules/
+
+# eval run bundles produced by scripts/babystand.sh
+/runs/
+
 # debugger binaries
 __debug_bin*
 /*.json
