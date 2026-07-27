@@ -33,11 +33,15 @@ steps:
       command: echo "i'm broke!"
       skip: "intentionally skipped to test broken/skipped state semantics"
 
-    # Produces a job with state "finished" and exit_status != 0
+    # Produces a job with a real non-zero exit_status (and logs to prove it).
+    # soft_fail keeps the failure observable on the job without turning the
+    # whole build red -- the state semantics are the point here, not the build
+    # result.
     - name: ":boom: job #2"
       command: |
         echo "i'm fine..."
         exit 1
+      soft_fail: true
 
   - label: ":node: Generate the eval pipeline"
     command: |
