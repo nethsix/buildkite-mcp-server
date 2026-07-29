@@ -3,8 +3,9 @@
 set -euo pipefail
 
 # Build an image for the toolchain and load it into the local image store.
-if [ "$BUILDKITE_STEP_KEY" == "agent" ]; then
+if [ "${BUILDKITE_STEP_KEY:-}" == "agent" ]; then
     docker build \
+	-f evals/Dockerfile \
         --load \
         --build-arg GITHUB_CLI_VERSION="${GITHUB_CLI_VERSION}" \
         --platform linux/amd64 \
