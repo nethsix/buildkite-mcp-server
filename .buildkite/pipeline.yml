@@ -15,7 +15,10 @@ env:
   EVAL_AGENT_QUEUE: "default-queue"
 
 agents:
-  queue: hosted
+  # The "hosted" queue in this cluster is self-hosted (hosted=False) and has no
+  # connected agents, so builds targeting it sit "scheduled" forever. Target the
+  # cluster's default auto-provisioning (hosted=True) queue so CI actually runs.
+  queue: default-queue
 
 cache:
   name: "build-cache"
