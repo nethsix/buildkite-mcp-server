@@ -1,0 +1,10 @@
+common:
+  - &right_deploy
+    docker#v5.13.0:
+      image: alpine:3.20
+
+steps:
+  - label: ":wave: Hello"
+    command: echo "hello world"
+    plugins:
+      <<: *wrong_deploy
