@@ -7,4 +7,4 @@ steps:
   - label: ":wave: Hello"
     command: echo "hello world"
     plugins:
-      <<: *wrong_deploy
+      <<: *right_deploy
