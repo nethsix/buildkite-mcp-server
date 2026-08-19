@@ -1,8 +1,8 @@
 steps:
   - label: ":hammer: Step one"
-    key: "duplicate-key-demo"
+    key: "duplicate-key-demo-one"
     command: &demo_cmd echo "this anchor parses fine on the agent"
 
   - label: ":hammer: Step two"
-    key: "duplicate-key-demo"
+    key: "duplicate-key-demo-two"
     command: *demo_cmd
