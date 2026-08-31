@@ -15,7 +15,7 @@ env:
   EVAL_AGENT_QUEUE: "default-queue"
 
 agents:
-  queue: default-queue
+  queue: hosted
 
 cache:
   name: "build-cache"
