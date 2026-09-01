@@ -37,7 +37,7 @@ steps:
     - name: ":boom: job #2"
       command: |
         echo "i'm fine..."
-        exit 1
+        exit 0
 
   - label: ":node: Generate the eval pipeline"
     command: |
